@@ -1,0 +1,7 @@
+File structure:
+//---- main.py
+    |---- agent.py
+    |---- memory_buffer.py
+    |---- networks.py
+    |---- maddpg.py
+    
