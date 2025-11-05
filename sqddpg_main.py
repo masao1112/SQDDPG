@@ -8,7 +8,7 @@ from pettingzoo.mpe import simple_spread_v3  # or simple_adversary_v3, simple_sp
 
 if __name__ == '__main__':
     
-    PRINT_INTERVAL = 10
+    PRINT_INTERVAL = 100
     N_GAMES = 1500
     MAX_STEPS = 25
     total_steps = 0
@@ -20,9 +20,10 @@ if __name__ == '__main__':
     sample_size = 5
     
     env = simple_spread_v3.parallel_env(
-            N=3,                 # total number of agents (1 adversary + 2 good)
+        N=3,                 # total number of agents (1 adversary + 2 good)
         max_cycles=25,
-        continuous_actions=True   # use continuous control for MADDPG
+        continuous_actions=True,   # use continuous control for MADDPG
+        render_mode="human"
     )   
     env.reset()
     n_agents = len(env.agents) # -1 for redundancy
@@ -41,7 +42,7 @@ if __name__ == '__main__':
     print(f"Actor dims: {actor_dims}")
     print(f"Critic dims: {critic_dims}, n_actions: {n_actions}\n")
 
-    maddpg_agents = SQDDPG(critic_dims, actor_dims, n_agents, n_actions, 
+    sqddpg_agents = SQDDPG(critic_dims, actor_dims, n_agents, n_actions, 
                            batch_size=batch_size, sample_size=sample_size,
                            fc1=64, fc2=64,  
                            alpha=0.01, beta=0.01,
@@ -51,7 +52,7 @@ if __name__ == '__main__':
 
 
     if evaluate:
-        maddpg_agents.load_checkpoint()
+        sqddpg_agents.load_checkpoint()
 
     for i in range(N_GAMES):
         obs_dict, _ = env.reset()
@@ -63,7 +64,7 @@ if __name__ == '__main__':
             if evaluate:
                 env.render()
                 #time.sleep(0.1) # to slow down the action for the video
-            actions = maddpg_agents.choose_action(obs)
+            actions = sqddpg_agents.choose_action(obs)
             # perform rescaling as package required
             action_dict = {
                 agent: np.clip(rescale_action(actions[idx]), 0.0, 1.0).astype(np.float32)
@@ -81,7 +82,7 @@ if __name__ == '__main__':
             memory.store_transition(obs, actions, reward, obs_, done)
             
             if total_steps % 10 == 0 and not evaluate:
-                maddpg_agents.learn(memory)
+                sqddpg_agents.learn(memory)
 
             obs = obs_
 
@@ -95,7 +96,7 @@ if __name__ == '__main__':
         
         if not evaluate:
             if avg_score > best_score:
-                # maddpg_agents.save_checkpoint()
+                sqddpg_agents.save_checkpoint()
                 best_score = avg_score
         if i % PRINT_INTERVAL == 0 and i > 0:
             print('episode', i, 'average score {:.1f}'.format(avg_score))

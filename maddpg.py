@@ -25,6 +25,16 @@ class MADDPG:
             
         return actions
     
+    def save_checkpoint(self):
+        print('... saving checkpoint ...')
+        for agent in self.agents:
+            agent.save_models()
+
+    def load_checkpoint(self):
+        print('... loading checkpoint ...')
+        for agent in self.agents:
+            agent.load_models()
+            
     def learn(self, memory):
         if not memory.ready():
             return
@@ -71,7 +81,7 @@ class MADDPG:
         for i, agent in enumerate(self.agents):
             # Critic Loss construction
             # Compute target critic values
-            critic_value_ = agent.target_critic(next_critic_input_cat, next_actions_cat).squeeze(1) # (B,)
+            critic_value_ = agent.target_critic(next_critic_input_cat, next_actions_cat).squeeze(1).detach() # (B,)
             rewards_i = torch.tensor(rewards[:, i], dtype=torch.float32) # (B,)
             dones_i = torch.tensor(dones[:, i], dtype=torch.float32)
             
