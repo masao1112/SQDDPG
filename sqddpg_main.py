@@ -1,32 +1,38 @@
+import time
 import numpy as np
 from sqddpg import SQDDPG
 from memory_buffer import MultiAgentReplayBuffer
 from utilities import *
-from pettingzoo.mpe import simple_spread_v3  # or simple_adversary_v3, simple_spread_v3
+from mpe2 import simple_spread_v3  # or simple_adversary_v3, simple_spread_v3
 
 
 
 if __name__ == '__main__':
     
     PRINT_INTERVAL = 100
-    N_GAMES = 1500
+    N_GAMES = 5000
     MAX_STEPS = 25
     total_steps = 0
     score_history = []
     avg_score_history = []
     evaluate = False
     best_score = 0
-    batch_size = 32
-    sample_size = 5
+    batch_size = 64
+    sample_size = 1
     
+    # env = simple_adversary_v3.parallel_env(
+    #     N=3,                 # total number of agents (1 adversary + 2 good)
+    #     max_cycles=MAX_STEPS,
+    #     continuous_actions=True ,  # use continuous control for MADDPG
+    #     # render_mode="human"
+    # )   
     env = simple_spread_v3.parallel_env(
-        N=3,                 # total number of agents (1 adversary + 2 good)
-        max_cycles=25,
-        continuous_actions=True,   # use continuous control for MADDPG
-        render_mode="human"
-    )   
+        N=3, local_ratio=0.5, 
+        max_cycles=MAX_STEPS, continuous_actions=True,
+        dynamic_rescaling=True, #render_mode="human"
+    )
     env.reset()
-    n_agents = len(env.agents) # -1 for redundancy
+    n_agents = len(env.agents) 
     actor_dims = []
     action_dims = []
     for agent in env.possible_agents:
@@ -45,16 +51,16 @@ if __name__ == '__main__':
     sqddpg_agents = SQDDPG(critic_dims, actor_dims, n_agents, n_actions, 
                            batch_size=batch_size, sample_size=sample_size,
                            fc1=64, fc2=64,  
-                           alpha=0.01, beta=0.01,
-                           chkpt_dir='tmp/maddpg/')
+                           alpha=1e-3, beta=1e-4, gamma=0.99, tau=0.001,
+                           chkpt_dir='tmp/sqddpg/',
+                           evaluate=evaluate)
 
-    memory = MultiAgentReplayBuffer(1000, critic_dims, actor_dims, n_actions, n_agents, batch_size)
-
+    memory = MultiAgentReplayBuffer(1000000, critic_dims, actor_dims, n_actions, n_agents, batch_size)
 
     if evaluate:
         sqddpg_agents.load_checkpoint()
 
-    for i in range(N_GAMES):
+    for episode in range(N_GAMES):
         obs_dict, _ = env.reset()
         obs = get_dict_value(obs_dict)
         score = 0
@@ -63,11 +69,12 @@ if __name__ == '__main__':
         while not any(done):
             if evaluate:
                 env.render()
-                #time.sleep(0.1) # to slow down the action for the video
-            actions = sqddpg_agents.choose_action(obs)
+                time.sleep(0.1) # to slow down the action for the video
+            noise_std = 0.2 * (1 - episode / N_GAMES)
+            actions = sqddpg_agents.choose_action(obs, noise_std)
             # perform rescaling as package required
             action_dict = {
-                agent: np.clip(rescale_action(actions[idx]), 0.0, 1.0).astype(np.float32)
+                agent: np.array(actions[idx], dtype=np.float32)
                 for idx, agent in enumerate(env.agents)
             }
             obs_, reward, done, info, _ = env.step(action_dict)
@@ -98,7 +105,8 @@ if __name__ == '__main__':
             if avg_score > best_score:
                 sqddpg_agents.save_checkpoint()
                 best_score = avg_score
-        if i % PRINT_INTERVAL == 0 and i > 0:
-            print('episode', i, 'average score {:.1f}'.format(avg_score))
+        if episode % PRINT_INTERVAL == 0 and episode > 0:
+            print('episode', episode, 'average score {:.1f}'.format(avg_score))
 
-    plot_rewards(avg_score_history, "sqddpg_rewards.png")
+    plot_rewards(avg_score_history, "mean_sqddpg_rewards.png")
+    plot_rewards(score_history, "original_sqddpg_rewards.png")

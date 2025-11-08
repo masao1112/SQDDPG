@@ -1,3 +1,4 @@
+import time
 import numpy as np
 from maddpg import MADDPG
 from memory_buffer import MultiAgentReplayBuffer
@@ -5,27 +6,30 @@ from utilities import *
 from pettingzoo.mpe import simple_adversary_v3  # or simple_adversary_v3, simple_spread_v3
 
 
-
 if __name__ == '__main__':
     
-    PRINT_INTERVAL = 200
-    N_GAMES = 1500
+    PRINT_INTERVAL = 100
+    N_GAMES = 1000
     MAX_STEPS = 25
     total_steps = 0
     score_history = []
     avg_score_history = []
-    evaluate = False
+    evaluate = True
     best_score = 0
-    batch_size = 32
+    batch_size = 128
     #scenario = 'simple'
     # scenario = 'simple_tag'
     # env = make_env(scenario)
     env = simple_adversary_v3.parallel_env(
         N=2,                 # total number of agents (1 adversary + 2 good)
-        max_cycles=25,
-        continuous_actions=True   # use continuous control for MADDPG
+        max_cycles=MAX_STEPS,
+        continuous_actions=True,  # use continuous control for MADDPG
+        # dynamic_rescaling=True,
+        render_mode="human"
     )   
     env.reset()
+    # landmarks_pos = [lm.state.p_pos for lm in env.unwrapped.world.landmarks]
+    # print(f"Landmark positions: {landmarks_pos}")
     n_agents = len(env.agents) # -1 for redundancy
     actor_dims = []
     action_dims = []
@@ -44,9 +48,10 @@ if __name__ == '__main__':
 
     # action space is a list of arrays, assume each agent has same action space
     maddpg_agents = MADDPG(critic_dims, actor_dims, n_agents, n_actions, 
-                           fc1=64, fc2=64,  
-                           alpha=0.01, beta=0.01,
-                           chkpt_dir='tmp/maddpg/')
+                           fc1=64, fc2=128,  
+                           alpha=1e-3, beta=1e-4, gamma=0.99, tau=0.01,
+                           chkpt_dir='tmp/maddpg',
+                           evaluate=evaluate)
 
     memory = MultiAgentReplayBuffer(1000000, critic_dims, actor_dims, n_actions, n_agents, batch_size)
 
@@ -61,13 +66,15 @@ if __name__ == '__main__':
         done = [False]*n_agents
         episode_step = 0
         while not any(done):
+            # landmarks_pos = [lm.state.p_pos for lm in env.unwrapped.world.landmarks]
+            # print(f"Episode {i}, Step {episode_step}: Landmark positions: {landmarks_pos}")
             if evaluate:
                 env.render()
-                #time.sleep(0.1) # to slow down the action for the video
+                time.sleep(0.1) # to slow down the action for the video
             actions = maddpg_agents.choose_action(obs)
-            # perform rescaling as package required
+            # convert to dict bc env requires it
             action_dict = {
-                agent: np.clip(rescale_action(actions[idx]), 0.0, 1.0).astype(np.float32)
+                agent: np.array(actions[idx], dtype=np.float32)
                 for idx, agent in enumerate(env.agents)
             }
             obs_, reward, done, info, _ = env.step(action_dict)
@@ -90,15 +97,16 @@ if __name__ == '__main__':
             total_steps += 1
             episode_step += 1
 
+        # keep track of stats
         score_history.append(score)
         avg_score = np.mean(score_history[-100:])
         avg_score_history.append(avg_score)
-        
         if not evaluate:
             if avg_score > best_score:
-                # maddpg_agents.save_checkpoint()
+                maddpg_agents.save_checkpoint()
                 best_score = avg_score
         if i % PRINT_INTERVAL == 0 and i > 0:
             print('episode', i, 'average score {:.1f}'.format(avg_score))
-
-    plot_rewards(avg_score_history, "maddpg_rewards.png")
+        
+    plot_rewards(avg_score_history, "mean_maddpg_rewards_eval.png")
+    plot_rewards(score_history, "original_maddpg_rewards_eval.png")

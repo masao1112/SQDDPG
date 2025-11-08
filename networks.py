@@ -44,6 +44,7 @@ class CriticNetwork(nn.Module):
         self.chkpt_file = os.path.join(chkpt_dir, name)
         # define an optimizer for this network
         self.optimizer = optim.Adam(self.parameters(), lr=beta)
+        self.scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer, step_size=100, gamma=0.7)
         # move tensors to device
         self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu') 
         self.to(self.device)
@@ -63,8 +64,7 @@ class CriticNetwork(nn.Module):
         
     def load_checkpoint(self):
         """Load model from checkpoint path"""
-        self.load_state_dict(torch.load(self.chkpt_file, weights_only=True))
-        
+        self.load_state_dict(torch.load(self.chkpt_file, weights_only=True, map_location=torch.device('cpu')))        
 
 class ActorNetwork(nn.Module):
     def __init__(self, alpha, input_dims, fc1_dims, fc2_dims,
@@ -76,12 +76,13 @@ class ActorNetwork(nn.Module):
             nn.Linear(fc1_dims, fc2_dims),
             nn.ReLU(),
             nn.Linear(fc2_dims, n_actions),
-            nn.Softmax(dim=1),
+            nn.Sigmoid() # for continuous actions
         )
         self.chkpt_dir = chkpt_dir
         self.chkpt_file = os.path.join(chkpt_dir, name)
         # define an optimizer for this network
         self.optimizer = optim.Adam(self.parameters(), lr=alpha)
+        self.scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer, step_size=100, gamma=0.7)
         # move tensors to device
         self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu') 
         self.to(self.device)
@@ -98,4 +99,4 @@ class ActorNetwork(nn.Module):
         
     def load_checkpoint(self):
         """Load model from checkpoint path"""
-        self.load_state_dict(torch.load(self.chkpt_file, weights_only=True))
+        self.load_state_dict(torch.load(self.chkpt_file, weights_only=True, map_location=torch.device('cpu')))

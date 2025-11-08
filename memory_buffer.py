@@ -41,29 +41,35 @@ class MultiAgentReplayBuffer:
         # for both the actor and critic states. I'm not sure why I thought
         # this was necessary in the first place. Sorry for the confusion!
 
-        #if self.mem_cntr % self.mem_size == 0 and self.mem_cntr > 0:
+        # if self.mem_cntr % self.mem_size == 0 and self.mem_cntr > 0:
         #    self.init_actor_memory()
-        if False in done:
-            index = self.mem_cntr % self.mem_size
-            for agent_idx in range(self.n_agents):
-                self.actor_state_memory[agent_idx][index] = raw_obs[agent_idx]
-                self.actor_new_state_memory[agent_idx][index] = raw_obs_[agent_idx]
-                self.actor_action_memory[agent_idx][index] = action[agent_idx]
+        
+        # set rewards and ob_ to all 0.0 when done
+        if reward is None or len(reward) != self.n_agents:
+            reward = [0.0] * self.n_agents
+        if raw_obs_ is None or len(raw_obs_) != self.n_agents:
+            raw_obs_ = [np.zeros_like(raw_obs[i]) for i in range(self.n_agents)]
+        
+        index = self.mem_cntr % self.mem_size
+        for agent_idx in range(self.n_agents):
+            self.actor_state_memory[agent_idx][index] = raw_obs[agent_idx]
+            self.actor_new_state_memory[agent_idx][index] = raw_obs_[agent_idx]
+            self.actor_action_memory[agent_idx][index] = action[agent_idx]
 
-            # self.state_memory[index] = state
-            # self.new_state_memory[index] = state_
-            self.reward_memory[index] = reward
-            self.terminal_memory[index] = done
-            self.mem_cntr += 1
+        # self.state_memory[index] = state
+        # self.new_state_memory[index] = state_
+        self.reward_memory[index] = reward
+        self.terminal_memory[index] = done
+        self.mem_cntr += 1
 
     def sample_buffer(self):
         max_mem = min(self.mem_cntr, self.mem_size)
 
         batch = np.random.choice(max_mem, self.batch_size, replace=False)
 
-        states = self.state_memory[batch]
+        # states = self.state_memory[batch]
         rewards = self.reward_memory[batch]
-        states_ = self.new_state_memory[batch]
+        # states_ = self.new_state_memory[batch]
         terminal = self.terminal_memory[batch]
 
         actor_states = []

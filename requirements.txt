@@ -3,4 +3,5 @@ numpy
 matplotlib
 gymnasium
 gym
-tensorflow
+pettingzoo
+mp2
