@@ -11,12 +11,12 @@ if __name__ == '__main__':
     
     PRINT_INTERVAL = 100
     N_GAMES = 5000
-    MAX_STEPS = 25
+    MAX_STEPS = 40
     total_steps = 0
     score_history = []
     avg_score_history = []
     evaluate = False
-    best_score = 0
+    best_score = -100
     batch_size = 128
     sample_size = 6
     

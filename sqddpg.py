@@ -1,214 +1,184 @@
+# sqddpg.py
 import torch
-import numpy as np
-import random
+import torch.nn.functional as F
 from utilities import _update_target_networks
 from networks import CriticNetwork
-import torch.nn.functional as F
-from agent import SQDDPGAgent
+from agent import SQDDPGAgent   # <-- this class now has NO critic
 
-# ASSUME: each agent has the same obs_dim and n_actions
-torch.autograd.set_detect_anomaly(True)
+
 class SQDDPG:
-    def __init__(self, critic_dims, actor_dims, n_agents, n_actions, batch_size, 
-                 sample_size, chkpt_dir, fc1=64, fc2=64, alpha=0.01, beta=0.01, 
-                 gamma=0.99, tau=0.01, evaluate=False):
-        self.tau = tau
+    def __init__(self, critic_dims, actor_dims, n_agents, n_actions, batch_size,
+                 sample_size, chkpt_dir, fc1=64, fc2=64,
+                 alpha=0.01, beta=0.01, gamma=0.99, tau=0.01, evaluate=False):
         self.n_ = n_agents
         self.n_actions = n_actions
         self.batch_size = batch_size
         self.sample_size = sample_size
-        self.obs_dim = critic_dims
-        self.actor_dims = actor_dims
+        self.gamma = gamma
+        self.tau = tau
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+        # ---------- GLOBAL CRITIC ----------
+        self.global_critic = CriticNetwork(
+            beta, critic_dims, fc1, fc2, n_agents, n_actions,
+            name="global_critic.zip", chkpt_dir=chkpt_dir).to(self.device)
+
+        self.global_target_critic = CriticNetwork(
+            beta, critic_dims, fc1, fc2, n_agents, n_actions,
+            name="global_target_critic.zip", chkpt_dir=chkpt_dir).to(self.device)
+
+        _update_target_networks(self.global_target_critic, self.global_critic, tau=1.0)
+
+        # ---------- AGENTS (only actors) ----------
         self.agents = []
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.global_critic = CriticNetwork(beta, critic_dims, fc1, fc2,
-                                   n_agents, n_actions, name="global_critic.zip", chkpt_dir=chkpt_dir)
-        self.global_target_critic = CriticNetwork(beta, critic_dims, fc1, fc2,
-                                   n_agents, n_actions, name="global_critic.zip", chkpt_dir=chkpt_dir)
-        
-        # Hard update for target critic 
-        _update_target_networks(self.global_target_critic, self.global_critic, tau=1)
-        # Initialize agents
-        for agent_idx in range(n_agents):
-            agent = SQDDPGAgent(critic_dims, actor_dims[agent_idx], fc1, fc2, agent_idx, 
-              n_agents, n_actions, chkpt_dir=chkpt_dir, alpha=alpha, beta=beta, 
-              gamma=gamma, tau=tau, evaluate=evaluate)
+        for idx in range(n_agents):
+            agent = SQDDPGAgent(
+                obs_dim=critic_dims,          # not used for critic any more
+                act_dim=actor_dims[idx],
+                fc1_dim=fc1, fc2_dim=fc2,
+                agent_idx=idx, n_agents=n_agents,
+                n_actions=n_actions, chkpt_dir=chkpt_dir,
+                alpha=alpha, gamma=gamma, tau=tau, evaluate=evaluate)
             self.agents.append(agent)
-        
+
+    # ------------------------------------------------------------------ #
+    #  Action selection
+    # ------------------------------------------------------------------ #
     def choose_action(self, obs, noise_std):
-        actions = []
-        for i, agent in enumerate(self.agents):
-            action = agent.choose_action(obs[i], noise_std)
-            actions.append(action)
-            
+        actions = [ag.choose_action(o, noise_std) for ag, o in zip(self.agents, obs)]
         return actions
-    
-    
-    def sample_grandcoalitions(self, batch_size):
-        seq_set = torch.tril(torch.ones(self.n_, self.n_), diagonal=0, out=None)
-        grand_coalitions_pos = torch.multinomial(torch.ones(batch_size*self.sample_size, self.n_)/self.n_, self.n_, replacement=False) # shape = (b*n_s, n)
-        individual_map = torch.zeros(batch_size*self.sample_size*self.n_, self.n_)
-        individual_map.scatter_(1, grand_coalitions_pos.contiguous().view(-1, 1), 1)
-        individual_map = individual_map.contiguous().view(batch_size, self.sample_size, self.n_, self.n_)
-        subcoalition_map = torch.matmul(individual_map, seq_set)
 
-        # FIX: construct torche grand coalition (in sequence by agent_idx) from torche grand_coalitions_pos (e.g., pos_idx <- grand_coalitions_pos[agent_idx])
-        offset = (torch.arange(batch_size*self.sample_size)*self.n_).reshape(-1, 1)
-        grand_coalitions_pos_alter = grand_coalitions_pos + offset
-        grand_coalitions = torch.zeros_like(grand_coalitions_pos_alter.flatten())
-        grand_coalitions[grand_coalitions_pos_alter.flatten()] = torch.arange(batch_size*self.sample_size*self.n_)
-        grand_coalitions = grand_coalitions.reshape(batch_size*self.sample_size, self.n_) - offset
-
-        grand_coalitions = grand_coalitions.unsqueeze(1).expand(batch_size*self.sample_size, \
-            self.n_, self.n_).contiguous().view(batch_size, self.sample_size, self.n_, self.n_) # shape = (b, n_s, n, n)
-
-        return subcoalition_map.to(self.device).detach(), grand_coalitions.to(self.device).detach()
-
-    def marginal_contribution(self, obs, act, is_target=False):
-        batch_size = self.batch_size
-        # Assume obs and act are lists of per-agent tensors: obs[i] has shape (batch_size, obs_dim_i), act[i] has shape (batch_size, n_actions)
-        # Move to device
-        obs = [o.to(self.device) for o in obs]
-        act = [a.to(self.device) for a in act]
-        # Concatenate observations into a global observation tensor
-        global_obs = torch.cat(obs, dim=1)  # shape = (batch_size, total_obs_dim), where total_obs_dim = sum(obs_dim_i for all agents)
-        # Stack actions into a joint action tensor assuming uniform action dimensions across agents
-        act = torch.stack(act, dim=1)  # shape = (batch_size, n_, n_actions)
-        
-        subcoalition_map, grand_coalitions = self.sample_grandcoalitions(batch_size) # shape = (b, n_s, n, n)
-        grand_coalitions = grand_coalitions.unsqueeze(-1).expand(batch_size, self.sample_size, self.n_, self.n_, self.n_actions) # shape = (b, n_s, n, n, a)
-        act = act.unsqueeze(1).unsqueeze(2).expand(batch_size, self.sample_size, self.n_, self.n_, self.n_actions).gather(3, grand_coalitions)
-	    # shape = (b, n, a) -> (b, 1, 1, n, a) -> (b, n_s, n, n, a)
-        act_map = subcoalition_map.unsqueeze(-1).float() # shape = (b, n_s, n, n, 1)
-        act = act * act_map
-        act = act.contiguous().view(batch_size, self.sample_size, self.n_, -1) # shape = (b, n_s, n, n*a)
-        
-        # Expand the global_obs (full concatenated observations) across sample_size and n_ dimensions
-        # No need to split per agent since the critic expects the full concatenated obs regardless of per-agent dims
-        total_obs_dim = global_obs.shape[1]
-        global_obs = global_obs.unsqueeze(1).unsqueeze(2).expand(batch_size, self.sample_size, self.n_, total_obs_dim) # shape = (b, n_s, n, total_obs_dim)
-        
-        values = []
-        if not is_target:
-            for i, agent in enumerate(self.agents):
-                value = self.global_critic(global_obs[:, :, i, :], act[:, :, i, :])
-                values.append(value)
-            values = torch.stack(values, dim=2)
-        else:
-            for i, agent in enumerate(self.agents):
-                value = self.global_target_critic(global_obs[:, :, i, :], act[:, :, i, :])
-                values.append(value)
-            values = torch.stack(values, dim=2)
-            
-        return values
-    
-    def save_checkpoint(self):
-        print('... saving checkpoint ...')
-        for agent in self.agents:
-            agent.save_models()
-        self.global_critic.save_checkpoint()
-        self.global_target_critic.save_checkpoint()
-
-    def load_checkpoint(self):
-        print('... loading checkpoint ...')
-        for agent in self.agents:
-            agent.load_models()
-        
+    # ------------------------------------------------------------------ #
+    #  Learning
+    # ------------------------------------------------------------------ #
     def learn(self, memory):
         if not memory.ready():
             return
-        
+
+        # ----- sample -----
         obs, actions, rewards, next_obs, dones = memory.sample_buffer()
-        # batch_size = memory.batch_size
-        # shapes:
-        # obs: (n_, B, actor_dim)
-        # actions: (n_, B, n_actions)
-        # rewards: (B, n_)
-        # next_obs: (n_, B, actor_dim)
-        # dones: (B, n_)
-        
-        # Calculate per agent actor outputs(current mu) and target actor for next_state
-        all_next_actions = []
-        all_mu_actions = []
-        old_agents_actions = [] 
-        next_critic_inputs = []
-        critic_inputs = []
-        for agent_idx, agent in enumerate(self.agents):
-            # get the desired observation for corresponding agent
-            obs_i = torch.tensor(obs[agent_idx], dtype=torch.float32).to(self.device) # obs_i: (batch, actor_dim)
-            next_obs_i = torch.tensor(next_obs[agent_idx], dtype=torch.float32).to(self.device) # obs_i: (batch, actor_dim)
-            # convert to torch for torch.cat
-            action_i = torch.tensor(actions[agent_idx], dtype=torch.float32).to(self.device)
-        
-            # compute mu i.e deterministic policy
-            mu_i = agent.actor(obs_i)
-            next_mu_i = agent.target_actor(next_obs_i)
-            all_mu_actions.append(mu_i)
-            all_next_actions.append(next_mu_i)
-            old_agents_actions.append(action_i)
-            next_critic_inputs.append(next_obs_i)
-            critic_inputs.append(obs_i)
-            
-        # Concatenate actions for critic (dim = batch, n_agents * act_dim)
-        # mu_cat = torch.cat(all_mu_actions, dim=-1).to(self.device)
-        # next_actions_cat = torch.cat(all_next_actions, dim=-1).to(self.device)
-        # old_actions_cat = torch.cat(old_agents_actions, dim=-1).to(self.device) # (B, n_*act_dim)
-        # critic_input_cat = torch.cat(critic_inputs, dim=-1).to(self.device) # (B, n_*obs_dim)
-        # next_critic_input_cat = torch.cat(next_critic_inputs, dim=-1).to(self.device)
 
-        # Compute shapley value 
-        # shapley_values_sum = self.marginal_contribution(critic_input_cat, old_actions_cat).mean(dim=1).contiguous().view(-1, self.n_).sum(dim=-1, keepdim=True).expand(self.batch_size, self.n_)
-        
-        # next_shapley_values_sum = self.marginal_contribution(next_critic_input_cat, next_actions_cat, is_target=True).mean(dim=1).contiguous().view(-1, self.n_).sum(dim=-1, keepdim=True).expand(self.batch_size, self.n_)
-        
-        # shapley_values = self.marginal_contribution(critic_input_cat, mu_cat).mean(dim=1).contiguous().view(-1, self.n_)
-        # MAIN: critic and actor update for each agent
-        # CAUTION: detach all actions that are not of the current agent due to grad computing 
+        # ----- to torch (B, ...) -----
+        obs = [torch.tensor(o, dtype=torch.float32, device=self.device) for o in obs]
+        next_obs = [torch.tensor(o, dtype=torch.float32, device=self.device) for o in next_obs]
+        actions = [torch.tensor(a, dtype=torch.float32, device=self.device) for a in actions]
+
+        rewards = torch.tensor(rewards, dtype=torch.float32, device=self.device)   # (B, n_)
+        dones   = torch.tensor(dones[:, 0], dtype=torch.float32, device=self.device)  # (B,)
+
+        # ----- concatenate for critic -----
+        critic_inputs      = torch.cat(obs, dim=-1)                     # (B, sum_obs)
+        next_critic_inputs = torch.cat(next_obs, dim=-1)
+
+        old_actions_cat = torch.cat(actions, dim=-1)                   # (B, n_*act)
+
+        # ----- target actions (mu') -----
+        with torch.no_grad():
+            next_actions = [ag.target_actor(o.unsqueeze(0)).squeeze(0)
+                            for ag, o in zip(self.agents, next_obs)]
+            next_actions_cat = torch.cat(next_actions, dim=-1)
+
+        # ----- Shapley marginal contributions -----
+        shapley_sum = self.marginal_contribution(
+            critic_inputs, old_actions_cat, is_target=False)      # (B, M, n_)
+        next_shapley_sum = self.marginal_contribution(
+            next_critic_inputs, next_actions_cat, is_target=True)
+
+        shapley_sum = shapley_sum.mean(dim=1).sum(dim=1)          # (B,)  global Q
+        next_shapley_sum = next_shapley_sum.mean(dim=1).sum(dim=1)
+
+        # ---------- GLOBAL CRITIC UPDATE (once per batch) ----------
+        target = rewards.sum(dim=1) + self.gamma * (1 - dones) * next_shapley_sum.detach()
+        critic_loss = F.mse_loss(shapley_sum, target)
+
+        self.global_critic.optimizer.zero_grad()
+        critic_loss.backward()
+        torch.nn.utils.clip_grad_norm_(self.global_critic.parameters(), 0.5)
+        self.global_critic.optimizer.step()
+        self.global_critic.scheduler.step()
+
+        # ---------- PER-AGENT ACTOR UPDATE ----------
         for i, agent in enumerate(self.agents):
-            next_actions = []
-            old_actions = []
-            mu_actor_loss = []
-            for j in range(self.n_):
-                if i==j:
-                    next_actions.append(all_next_actions[j])
-                    old_actions.append(old_agents_actions[j])
-                    mu_actor_loss.append(all_mu_actions[j])
-                else:
-                    next_actions.append(all_next_actions[j].detach())
-                    old_actions.append(old_agents_actions[j].detach())
-                    mu_actor_loss.append(all_mu_actions[j].detach())
-                    
-            # next_actions_cat = torch.cat(next_actions, dim=-1).to(self.device)
-            # old_actions_cat = torch.cat(old_agents_actions, dim=-1).to(self.device) # (B, n_*act_dim)
-            # mu_cat_actor_loss = torch.cat(mu_actor_loss, dim=-1).to(self.device)
+            # mu actions for this agent, detach others
+            mu_actions = [self.agents[j].actor(obs[j].unsqueeze(0)).squeeze(0)
+                          if j == i else self.agents[j].actor(obs[j].unsqueeze(0)).detach().squeeze(0)
+                          for j in range(self.n_)]
+            mu_cat = torch.cat(mu_actions, dim=-1)
 
-            shapley_values_sum = self.marginal_contribution(critic_inputs, old_agents_actions).mean(dim=1).contiguous().view(-1, self.n_).sum(dim=-1, keepdim=True).expand(self.batch_size, self.n_)
-            
-            next_shapley_values_sum = self.marginal_contribution(next_critic_inputs, next_actions, is_target=True).mean(dim=1).contiguous().view(-1, self.n_).sum(dim=-1, keepdim=True).expand(self.batch_size, self.n_)
-        
-            critic_value_ = next_shapley_values_sum[:, i].detach()  # replace target critic with shapley bootstrap
-            print(type(rewards))
-            rewards = torch.tensor(rewards, dtype=torch.float32, device=self.device)
-            # rewards_i = torch.tensor(rewards[:, i], dtype=torch.float32, device=self.device)
-            dones_i = torch.tensor(dones[:, i], dtype=torch.float32, device=self.device)
-            global_rewards = torch.sum(rewards, dim=1) 
-            target = global_rewards + agent.gamma * (1 - dones_i) * critic_value_
-            critic_value = shapley_values_sum[:, i] #agent.critic(critic_input_cat, old_actions_cat).squeeze(1)
-            critic_loss = F.mse_loss(target, critic_value)
-            self.global_critic.optimizer.zero_grad()
-            critic_loss.backward(retain_graph=True)
-            torch.nn.utils.clip_grad_norm_(self.global_critic.parameters(), max_norm=0.5)
-            self.global_critic.optimizer.step()
-            self.global_critic.scheduler.step()
-            
-            # Actor loss using shapley advantages
-            shapley_values = self.marginal_contribution(critic_inputs, mu_actor_loss).mean(dim=1).contiguous().view(-1, self.n_)
-            actor_loss = -torch.mean(shapley_values[:, i])
+            shapley = self.marginal_contribution(
+                critic_inputs, mu_cat, is_target=False)          # (B, M, n_)
+            shapley = shapley.mean(dim=1)[:, i]                  # (B,)
+
+            actor_loss = -shapley.mean()
             agent.actor.optimizer.zero_grad()
-            actor_loss.backward(retain_graph=True)
-            torch.nn.utils.clip_grad_norm_(agent.actor.parameters(), max_norm=0.5)
+            actor_loss.backward()
+            torch.nn.utils.clip_grad_norm_(agent.actor.parameters(), 0.5)
             agent.actor.optimizer.step()
             agent.actor.scheduler.step()
-            # soft update the target
+
+            # soft-update actor target
             agent.update_target_networks()
-        _update_target_networks(self.global_target_critic, self.global_critic, tau=self.tau)
+
+        # ----- soft-update global target critic (once per batch) -----
+        _update_target_networks(self.global_target_critic, self.global_critic, self.tau)
+
+    # ------------------------------------------------------------------ #
+    #  Shapley marginal contribution (Monte-Carlo)
+    # ------------------------------------------------------------------ #
+    def marginal_contribution(self, obs_batch, actions_batch, is_target=False):
+        """
+        obs_batch      : (B, sum_obs)
+        actions_batch  : (B, n_*act)
+        Returns        : (B, sample_size, n_agents)   marginals
+        """
+        B = obs_batch.shape[0]
+        critic = self.global_target_critic if is_target else self.global_critic
+
+        # random permutations (sample_size per batch item)
+        perms = torch.stack([torch.randperm(self.n_) for _ in range(B * self.sample_size)])
+        perms = perms.view(B, self.sample_size, self.n_).to(self.device)   # (B, M, n_)
+
+        # repeat inputs for each permutation
+        obs_rep    = obs_batch.unsqueeze(1).repeat(1, self.sample_size, 1).view(B*self.sample_size, -1)
+        actions_rep = actions_batch.unsqueeze(1).repeat(1, self.sample_size, 1).view(B*self.sample_size, -1)
+
+        marginals = torch.zeros(B*self.sample_size, self.n_, device=self.device)
+
+        # evaluate Q for empty coalition
+        empty_actions = torch.zeros_like(actions_rep)
+        Q_prev = critic(obs_rep, empty_actions).squeeze(-1)          # (B*M,)
+
+        for k in range(self.n_):
+            # indices of agents that enter at step k in each permutation
+            enter = perms[:, :, k]                                   # (B, M)
+            # idx = (torch.arange(B*self.sample_size, device=self.device),
+            #        enter.flatten() + k * self.n_actions)             # flat linear indices
+
+            # copy actions of the entering agent into the previous coalition
+            cur_actions = actions_rep.clone()
+            cur_actions.view(-1, self.n_, self.n_actions)[torch.arange(B*self.sample_size), enter.flatten()] = \
+                actions_rep.view(-1, self.n_, self.n_actions)[torch.arange(B*self.sample_size), enter.flatten()]
+
+            Q_cur = critic(obs_rep, cur_actions).squeeze(-1)
+            marginals[:, k] = Q_cur - Q_prev
+            Q_prev = Q_cur
+
+        marginals = marginals.view(B, self.sample_size, self.n_)
+        return marginals
+
+    # ------------------------------------------------------------------ #
+    #  Checkpoint handling
+    # ------------------------------------------------------------------ #
+    def save_checkpoint(self):
+        print("...saving checkpoints...")
+        self.global_critic.save_checkpoint()
+        self.global_target_critic.save_checkpoint()
+        for a in self.agents:
+            a.save_models()
+
+    def load_checkpoint(self):
+        print("...loading checkpoints...")
+        self.global_critic.load_checkpoint()
+        self.global_target_critic.load_checkpoint()
+        for a in self.agents:
+            a.load_models()

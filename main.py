@@ -10,24 +10,21 @@ if __name__ == '__main__':
     
     PRINT_INTERVAL = 100
     N_GAMES = 5000
-    MAX_STEPS = 25
+    MAX_STEPS = 40
     total_steps = 0
     score_history = []
     avg_score_history = []
     evaluate = False
-    best_score = 0
+    best_score = -100
     batch_size = 128
-    #scenario = 'simple'
-    # scenario = 'simple_tag'
-    # env = make_env(scenario)
+    # initiate environment
     env = simple_spread_v3.parallel_env(
-        N=3, local_ratio=0.5, 
+        N=3, 
         max_cycles=MAX_STEPS, continuous_actions=True,
         dynamic_rescaling=True, #render_mode="human"
     )
     env.reset()
-    # landmarks_pos = [lm.state.p_pos for lm in env.unwrapped.world.landmarks]
-    # print(f"Landmark positions: {landmarks_pos}")
+
     n_agents = len(env.agents) # -1 for redundancy
     actor_dims = []
     action_dims = []

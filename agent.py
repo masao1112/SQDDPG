@@ -68,11 +68,6 @@ class SQDDPGAgent:
         self.evaluate = evaluate
         self.n_actions = n_actions
         agent_name = 'agent_%s' % agent_idx
-        # self.critic = CriticNetwork(beta, obs_dim, fc1_dim, fc2_dim,
-        #                            n_agents, n_actions, name=agent_name+"_critic.zip", chkpt_dir=chkpt_dir)
-        # self.target_critic = CriticNetwork(beta, obs_dim, fc1_dim, fc2_dim,
-        #                            n_agents, n_actions, name=agent_name+"_target_critic.zip", chkpt_dir=chkpt_dir)
-        
         self.actor = ActorNetwork(alpha, act_dim, fc1_dim, fc2_dim, 
                                   n_actions, name=agent_name+"_actor.zip", chkpt_dir=chkpt_dir)
         self.target_actor = ActorNetwork(alpha, act_dim, fc1_dim, fc2_dim, 
@@ -90,7 +85,7 @@ class SQDDPGAgent:
                 action = torch.clamp(actions + noise, 0, 1)
             else:
                 action = actions
-            return action.detach().cpu().numpy()[0]
+            return action.cpu().numpy()[0]
 
     def update_target_networks(self, tau=None):
         if tau is None:
