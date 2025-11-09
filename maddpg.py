@@ -1,6 +1,6 @@
 import torch
 import torch.nn.functional as F
-from agent import Agent
+from agent import MADDPGAgent
 
 class MADDPG:
     def __init__(self, critic_dims, actor_dims, n_agents, n_actions, chkpt_dir,
@@ -13,14 +13,14 @@ class MADDPG:
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         
         for agent_idx in range(n_agents):
-            agent = Agent(critic_dims, actor_dims[agent_idx], fc1, fc2, agent_idx, 
+            agent = MADDPGAgent(critic_dims, actor_dims[agent_idx], fc1, fc2, agent_idx, 
                   n_agents, n_actions, chkpt_dir=chkpt_dir, alpha=alpha, beta=beta, gamma=gamma, tau=tau, evaluate=evaluate)
             self.agents.append(agent)
             
     def choose_action(self, obs):
         actions = []
         for i, agent in enumerate(self.agents):
-            action = agent.choose_action(obs[i])
+            action = agent.choose_action(obs[i], 0.1)
             actions.append(action)
         return actions
     

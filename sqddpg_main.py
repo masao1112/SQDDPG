@@ -17,8 +17,8 @@ if __name__ == '__main__':
     avg_score_history = []
     evaluate = False
     best_score = 0
-    batch_size = 64
-    sample_size = 1
+    batch_size = 128
+    sample_size = 6
     
     # env = simple_adversary_v3.parallel_env(
     #     N=3,                 # total number of agents (1 adversary + 2 good)
@@ -50,8 +50,8 @@ if __name__ == '__main__':
 
     sqddpg_agents = SQDDPG(critic_dims, actor_dims, n_agents, n_actions, 
                            batch_size=batch_size, sample_size=sample_size,
-                           fc1=64, fc2=64,  
-                           alpha=1e-3, beta=1e-4, gamma=0.99, tau=0.001,
+                           fc1=128, fc2=128,  
+                           alpha=1e-4, beta=1e-3, gamma=0.99, tau=0.001,
                            chkpt_dir='tmp/sqddpg/',
                            evaluate=evaluate)
 

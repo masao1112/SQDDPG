@@ -44,7 +44,7 @@ class CriticNetwork(nn.Module):
         self.chkpt_file = os.path.join(chkpt_dir, name)
         # define an optimizer for this network
         self.optimizer = optim.Adam(self.parameters(), lr=beta)
-        self.scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer, step_size=100, gamma=0.7)
+        self.scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer, step_size=500, gamma=0.1)
         # move tensors to device
         self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu') 
         self.to(self.device)
@@ -82,7 +82,7 @@ class ActorNetwork(nn.Module):
         self.chkpt_file = os.path.join(chkpt_dir, name)
         # define an optimizer for this network
         self.optimizer = optim.Adam(self.parameters(), lr=alpha)
-        self.scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer, step_size=100, gamma=0.7)
+        self.scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer, step_size=500, gamma=0.1)
         # move tensors to device
         self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu') 
         self.to(self.device)

@@ -3,30 +3,28 @@ import numpy as np
 from maddpg import MADDPG
 from memory_buffer import MultiAgentReplayBuffer
 from utilities import *
-from pettingzoo.mpe import simple_adversary_v3  # or simple_adversary_v3, simple_spread_v3
+from mpe2 import simple_spread_v3  # or simple_adversary_v3, simple_spread_v3
 
 
 if __name__ == '__main__':
     
     PRINT_INTERVAL = 100
-    N_GAMES = 1000
+    N_GAMES = 5000
     MAX_STEPS = 25
     total_steps = 0
     score_history = []
     avg_score_history = []
-    evaluate = True
+    evaluate = False
     best_score = 0
     batch_size = 128
     #scenario = 'simple'
     # scenario = 'simple_tag'
     # env = make_env(scenario)
-    env = simple_adversary_v3.parallel_env(
-        N=2,                 # total number of agents (1 adversary + 2 good)
-        max_cycles=MAX_STEPS,
-        continuous_actions=True,  # use continuous control for MADDPG
-        # dynamic_rescaling=True,
-        render_mode="human"
-    )   
+    env = simple_spread_v3.parallel_env(
+        N=3, local_ratio=0.5, 
+        max_cycles=MAX_STEPS, continuous_actions=True,
+        dynamic_rescaling=True, #render_mode="human"
+    )
     env.reset()
     # landmarks_pos = [lm.state.p_pos for lm in env.unwrapped.world.landmarks]
     # print(f"Landmark positions: {landmarks_pos}")
@@ -48,8 +46,8 @@ if __name__ == '__main__':
 
     # action space is a list of arrays, assume each agent has same action space
     maddpg_agents = MADDPG(critic_dims, actor_dims, n_agents, n_actions, 
-                           fc1=64, fc2=128,  
-                           alpha=1e-3, beta=1e-4, gamma=0.99, tau=0.01,
+                           fc1=128, fc2=128,  
+                           alpha=1e-4, beta=1e-3, gamma=0.99, tau=0.001,
                            chkpt_dir='tmp/maddpg',
                            evaluate=evaluate)
 

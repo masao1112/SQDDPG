@@ -1,8 +1,10 @@
 import torch
 import numpy as np
 import random
+from utilities import _update_target_networks
+from networks import CriticNetwork
 import torch.nn.functional as F
-from agent import Agent
+from agent import SQDDPGAgent
 
 # ASSUME: each agent has the same obs_dim and n_actions
 torch.autograd.set_detect_anomaly(True)
@@ -10,6 +12,7 @@ class SQDDPG:
     def __init__(self, critic_dims, actor_dims, n_agents, n_actions, batch_size, 
                  sample_size, chkpt_dir, fc1=64, fc2=64, alpha=0.01, beta=0.01, 
                  gamma=0.99, tau=0.01, evaluate=False):
+        self.tau = tau
         self.n_ = n_agents
         self.n_actions = n_actions
         self.batch_size = batch_size
@@ -18,13 +21,20 @@ class SQDDPG:
         self.actor_dims = actor_dims
         self.agents = []
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.global_critic = CriticNetwork(beta, critic_dims, fc1, fc2,
+                                   n_agents, n_actions, name="global_critic.zip", chkpt_dir=chkpt_dir)
+        self.global_target_critic = CriticNetwork(beta, critic_dims, fc1, fc2,
+                                   n_agents, n_actions, name="global_critic.zip", chkpt_dir=chkpt_dir)
         
+        # Hard update for target critic 
+        _update_target_networks(self.global_target_critic, self.global_critic, tau=1)
+        # Initialize agents
         for agent_idx in range(n_agents):
-            agent = Agent(critic_dims, actor_dims[agent_idx], fc1, fc2, agent_idx, 
+            agent = SQDDPGAgent(critic_dims, actor_dims[agent_idx], fc1, fc2, agent_idx, 
               n_agents, n_actions, chkpt_dir=chkpt_dir, alpha=alpha, beta=beta, 
               gamma=gamma, tau=tau, evaluate=evaluate)
             self.agents.append(agent)
-            
+        
     def choose_action(self, obs, noise_std):
         actions = []
         for i, agent in enumerate(self.agents):
@@ -32,6 +42,7 @@ class SQDDPG:
             actions.append(action)
             
         return actions
+    
     
     def sample_grandcoalitions(self, batch_size):
         seq_set = torch.tril(torch.ones(self.n_, self.n_), diagonal=0, out=None)
@@ -80,12 +91,12 @@ class SQDDPG:
         values = []
         if not is_target:
             for i, agent in enumerate(self.agents):
-                value = agent.critic(global_obs[:, :, i, :], act[:, :, i, :])
+                value = self.global_critic(global_obs[:, :, i, :], act[:, :, i, :])
                 values.append(value)
             values = torch.stack(values, dim=2)
         else:
             for i, agent in enumerate(self.agents):
-                value = agent.target_critic(global_obs[:, :, i, :], act[:, :, i, :])
+                value = self.global_target_critic(global_obs[:, :, i, :], act[:, :, i, :])
                 values.append(value)
             values = torch.stack(values, dim=2)
             
@@ -95,6 +106,8 @@ class SQDDPG:
         print('... saving checkpoint ...')
         for agent in self.agents:
             agent.save_models()
+        self.global_critic.save_checkpoint()
+        self.global_target_critic.save_checkpoint()
 
     def load_checkpoint(self):
         print('... loading checkpoint ...')
@@ -174,18 +187,19 @@ class SQDDPG:
             next_shapley_values_sum = self.marginal_contribution(next_critic_inputs, next_actions, is_target=True).mean(dim=1).contiguous().view(-1, self.n_).sum(dim=-1, keepdim=True).expand(self.batch_size, self.n_)
         
             critic_value_ = next_shapley_values_sum[:, i].detach()  # replace target critic with shapley bootstrap
-            
-            rewards_i = torch.tensor(rewards[:, i], dtype=torch.float32, device=self.device)
+            print(type(rewards))
+            rewards = torch.tensor(rewards, dtype=torch.float32, device=self.device)
+            # rewards_i = torch.tensor(rewards[:, i], dtype=torch.float32, device=self.device)
             dones_i = torch.tensor(dones[:, i], dtype=torch.float32, device=self.device)
             global_rewards = torch.sum(rewards, dim=1) 
             target = global_rewards + agent.gamma * (1 - dones_i) * critic_value_
             critic_value = shapley_values_sum[:, i] #agent.critic(critic_input_cat, old_actions_cat).squeeze(1)
             critic_loss = F.mse_loss(target, critic_value)
-            agent.critic.optimizer.zero_grad()
+            self.global_critic.optimizer.zero_grad()
             critic_loss.backward(retain_graph=True)
-            torch.nn.utils.clip_grad_norm_(agent.critic.parameters(), max_norm=0.5)
-            agent.critic.optimizer.step()
-            agent.critic.scheduler.step()
+            torch.nn.utils.clip_grad_norm_(self.global_critic.parameters(), max_norm=0.5)
+            self.global_critic.optimizer.step()
+            self.global_critic.scheduler.step()
             
             # Actor loss using shapley advantages
             shapley_values = self.marginal_contribution(critic_inputs, mu_actor_loss).mean(dim=1).contiguous().view(-1, self.n_)
@@ -197,4 +211,4 @@ class SQDDPG:
             agent.actor.scheduler.step()
             # soft update the target
             agent.update_target_networks()
-            
+        _update_target_networks(self.global_target_critic, self.global_critic, tau=self.tau)
