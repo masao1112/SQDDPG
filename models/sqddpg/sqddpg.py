@@ -1,9 +1,9 @@
 # sqddpg.py
 import torch
 import torch.nn.functional as F
-from utilities import _update_target_networks
-from networks import CriticNetwork
-from agent import SQDDPGAgent   # <-- this class now has NO critic
+from helper.utilities import _update_target_networks
+from helper.networks import CriticNetwork
+from helper.agent import SQDDPGAgent
 
 
 class SQDDPG:
@@ -45,9 +45,12 @@ class SQDDPG:
     #  Action selection
     # ------------------------------------------------------------------ #
     def choose_action(self, obs, noise_std):
-        actions = [ag.choose_action(o, noise_std) for ag, o in zip(self.agents, obs)]
-        return actions
-
+        actions = []
+        for i, agent in enumerate(self.agents):
+            action = agent.choose_action(obs, noise_std)
+            actions.append(action)
+	
+        return actions[0]
     # ------------------------------------------------------------------ #
     #  Learning
     # ------------------------------------------------------------------ #
@@ -59,12 +62,12 @@ class SQDDPG:
         obs, actions, rewards, next_obs, dones = memory.sample_buffer()
         
         # ----- to torch (B, ...) -----
-        obs = [torch.tensor(o, dtype=torch.float32, device=self.device) for o in obs]
+        obs = [torch.tensor(o, dtype=torch.float32, device=self.device) for o in obs] # (n_, B, obs_dim)
         next_obs = [torch.tensor(o, dtype=torch.float32, device=self.device) for o in next_obs]
-        actions = [torch.tensor(a, dtype=torch.float32, device=self.device) for a in actions]
+        actions = [torch.tensor(a, dtype=torch.float32, device=self.device) for a in actions] # (n_, B, actor_dim)
 
         rewards = torch.tensor(rewards, dtype=torch.float32, device=self.device)   # (B, n_)
-        dones   = torch.tensor(dones[:, 0], dtype=torch.float32, device=self.device)  # (B,)
+        dones   = torch.tensor(dones[:, 0], dtype=torch.float32, device=self.device)  # (B,) if one agent is done, others as well
 
         # ----- concatenate for critic -----
         critic_inputs      = torch.cat(obs, dim=-1)                     # (B, sum_obs)
@@ -72,9 +75,13 @@ class SQDDPG:
         old_actions_cat = torch.cat(actions, dim=-1)                   # (B, n_*act)
         # ----- target actions (mu') -----
         with torch.no_grad():
-            next_actions = [ag.target_actor(o.unsqueeze(0)).squeeze(0)
-                            for ag, o in zip(self.agents, next_obs)]
-            next_actions_cat = torch.cat(next_actions, dim=-1)
+           next_actions = []
+           for i, agent in enumerate(self.agents):
+                next_obs_i = next_obs[i].unsqueeze(0) # adding an extra batch dim cause that is what pytorch expect
+                next_actions_i = agent.target_actor(next_obs_i).squeeze(0)
+                next_actions.append(next_actions_i)
+
+           next_actions_cat = torch.cat(next_actions, dim=-1)
 
         # ----- Shapley marginal contributions -----
         shapley_sum = self.marginal_contribution(
@@ -98,9 +105,12 @@ class SQDDPG:
         # ---------- PER-AGENT ACTOR UPDATE ----------
         for i, agent in enumerate(self.agents):
             # mu actions for this agent, detach others
-            mu_actions = [self.agents[j].actor(obs[j].unsqueeze(0)).squeeze(0)
-                          if j == i else self.agents[j].actor(obs[j].unsqueeze(0)).detach().squeeze(0)
-                          for j in range(self.n_)]
+            mu_actions = []
+            for i, agent in enumerate(self.agents):
+                obs_i = obs[i].unsqueeze(0)                  # (1, B, obs_dim)
+                mu_actions_i = agent.actor(obs_i).squeeze(0) # (B,)
+                mu_actions.append(mu_actions_i)
+
             mu_cat = torch.cat(mu_actions, dim=-1)
 
             shapley = self.marginal_contribution(

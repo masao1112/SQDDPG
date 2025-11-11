@@ -1,8 +1,8 @@
 import os
 import torch
 import numpy as np
-from utilities import _update_target_networks
-from networks import CriticNetwork, ActorNetwork
+from helper.utilities import _update_target_networks
+from helper.networks import CriticNetwork, ActorNetwork
 
 class MADDPGAgent:
     def __init__(self, obs_dim, act_dim, fc1_dim, fc2_dim,
@@ -79,6 +79,7 @@ class SQDDPGAgent:
         
     def choose_action(self, state, noise_std):
         with torch.no_grad():
+            # if isinstance(state, torch.tensor):
             state = torch.tensor(state, dtype=torch.float).unsqueeze(0).to(self.actor.device)
             actions = self.actor(state)
             if not self.evaluate:
