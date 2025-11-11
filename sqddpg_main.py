@@ -1,6 +1,6 @@
 import time
 import numpy as np
-from models.sqddpg.sqddpg import SQDDPG
+from models.sqddpg import SQDDPG
 from helper.memory_buffer import MultiAgentReplayBuffer
 from helper.utilities import *
 from mpe2 import simple_spread_v3  # or simple_adversary_v3, simple_spread_v3

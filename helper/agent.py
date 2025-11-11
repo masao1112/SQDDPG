@@ -79,8 +79,8 @@ class SQDDPGAgent:
         
     def choose_action(self, state, noise_std):
         with torch.no_grad():
-            # if isinstance(state, torch.tensor):
-            state = torch.tensor(state, dtype=torch.float).unsqueeze(0).to(self.actor.device)
+            state = [s.tolist() for s in state]
+            state = torch.tensor(state, dtype=torch.float32).unsqueeze(0).to(self.actor.device)
             actions = self.actor(state)
             if not self.evaluate:
                 noise = torch.randn_like(actions) * noise_std # gaussian noise
