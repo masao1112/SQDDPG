@@ -1,15 +1,16 @@
 import time
 import numpy as np
-from maddpg import MADDPG
+from sqddpg import SQDDPG
 from memory_buffer import MultiAgentReplayBuffer
 from utilities import *
 from mpe2 import simple_spread_v3  # or simple_adversary_v3, simple_spread_v3
 
 
+
 if __name__ == '__main__':
     
     PRINT_INTERVAL = 100
-    N_GAMES = 5000
+    N_GAMES = 20000
     MAX_STEPS = 40
     total_steps = 0
     score_history = []
@@ -17,15 +18,21 @@ if __name__ == '__main__':
     evaluate = False
     best_score = -100
     batch_size = 128
-    # initiate environment
+    sample_size = 32
+    
+    # env = simple_adversary_v3.parallel_env(
+    #     N=3,                 # total number of agents (1 adversary + 2 good)
+    #     max_cycles=MAX_STEPS,
+    #     continuous_actions=True ,  # use continuous control for MADDPG
+    #     # render_mode="human"
+    # )   
     env = simple_spread_v3.parallel_env(
-        N=3, 
+        N=3, local_ratio=0.5, 
         max_cycles=MAX_STEPS, continuous_actions=True,
         dynamic_rescaling=True, #render_mode="human"
     )
     env.reset()
-
-    n_agents = len(env.agents) # -1 for redundancy
+    n_agents = len(env.agents) 
     actor_dims = []
     action_dims = []
     for agent in env.possible_agents:
@@ -41,33 +48,31 @@ if __name__ == '__main__':
     print(f"Actor dims: {actor_dims}")
     print(f"Critic dims: {critic_dims}, n_actions: {n_actions}\n")
 
-    # action space is a list of arrays, assume each agent has same action space
-    maddpg_agents = MADDPG(critic_dims, actor_dims, n_agents, n_actions, 
+    sqddpg_agents = SQDDPG(critic_dims, actor_dims, n_agents, n_actions, 
+                           batch_size=batch_size, sample_size=sample_size,
                            fc1=128, fc2=128,  
                            alpha=1e-4, beta=1e-3, gamma=0.99, tau=0.001,
-                           chkpt_dir='tmp/maddpg',
+                           chkpt_dir='tmp/sqddpg/',
                            evaluate=evaluate)
 
     memory = MultiAgentReplayBuffer(1000000, critic_dims, actor_dims, n_actions, n_agents, batch_size)
 
-
     if evaluate:
-        maddpg_agents.load_checkpoint()
+        sqddpg_agents.load_checkpoint()
 
-    for i in range(N_GAMES):
+    for episode in range(N_GAMES):
         obs_dict, _ = env.reset()
         obs = get_dict_value(obs_dict)
         score = 0
         done = [False]*n_agents
         episode_step = 0
         while not any(done):
-            # landmarks_pos = [lm.state.p_pos for lm in env.unwrapped.world.landmarks]
-            # print(f"Episode {i}, Step {episode_step}: Landmark positions: {landmarks_pos}")
             if evaluate:
                 env.render()
                 time.sleep(0.1) # to slow down the action for the video
-            actions = maddpg_agents.choose_action(obs)
-            # convert to dict bc env requires it
+            noise_std = 0.2 * (1 - episode / N_GAMES)
+            actions = sqddpg_agents.choose_action(obs, noise_std)
+            # perform rescaling as package required
             action_dict = {
                 agent: np.array(actions[idx], dtype=np.float32)
                 for idx, agent in enumerate(env.agents)
@@ -84,7 +89,7 @@ if __name__ == '__main__':
             memory.store_transition(obs, actions, reward, obs_, done)
             
             if total_steps % 10 == 0 and not evaluate:
-                maddpg_agents.learn(memory)
+                sqddpg_agents.learn(memory)
 
             obs = obs_
 
@@ -92,16 +97,16 @@ if __name__ == '__main__':
             total_steps += 1
             episode_step += 1
 
-        # keep track of stats
         score_history.append(score)
         avg_score = np.mean(score_history[-100:])
         avg_score_history.append(avg_score)
+        
         if not evaluate:
             if avg_score > best_score:
-                maddpg_agents.save_checkpoint()
+                sqddpg_agents.save_checkpoint()
                 best_score = avg_score
-        if i % PRINT_INTERVAL == 0 and i > 0:
-            print('episode', i, 'average score {:.1f}'.format(avg_score))
-        
-    plot_rewards(avg_score_history, "mean_maddpg_rewards_eval.png")
-    plot_rewards(score_history, "original_maddpg_rewards_eval.png")
+        if episode % PRINT_INTERVAL == 0 and episode > 0:
+            print('episode', episode, 'average score {:.1f}'.format(avg_score))
+
+    plot_rewards(avg_score_history, "mean_sqddpg_rewards.png")
+    plot_rewards(score_history, "original_sqddpg_rewards.png")

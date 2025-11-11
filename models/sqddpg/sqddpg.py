@@ -57,7 +57,7 @@ class SQDDPG:
 
         # ----- sample -----
         obs, actions, rewards, next_obs, dones = memory.sample_buffer()
-
+        
         # ----- to torch (B, ...) -----
         obs = [torch.tensor(o, dtype=torch.float32, device=self.device) for o in obs]
         next_obs = [torch.tensor(o, dtype=torch.float32, device=self.device) for o in next_obs]
@@ -69,9 +69,7 @@ class SQDDPG:
         # ----- concatenate for critic -----
         critic_inputs      = torch.cat(obs, dim=-1)                     # (B, sum_obs)
         next_critic_inputs = torch.cat(next_obs, dim=-1)
-
         old_actions_cat = torch.cat(actions, dim=-1)                   # (B, n_*act)
-
         # ----- target actions (mu') -----
         with torch.no_grad():
             next_actions = [ag.target_actor(o.unsqueeze(0)).squeeze(0)

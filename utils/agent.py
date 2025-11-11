@@ -1,5 +1,6 @@
 import os
 import torch
+import numpy as np
 from utilities import _update_target_networks
 from networks import CriticNetwork, ActorNetwork
 
@@ -77,7 +78,7 @@ class SQDDPGAgent:
         self.update_target_networks(tau=1)
         
     def choose_action(self, state, noise_std):
-        with torch.no_grad(): 
+        with torch.no_grad():
             state = torch.tensor(state, dtype=torch.float).unsqueeze(0).to(self.actor.device)
             actions = self.actor(state)
             if not self.evaluate:
@@ -97,11 +98,11 @@ class SQDDPGAgent:
     def save_models(self):
         self.actor.save_checkpoint()
         self.target_actor.save_checkpoint()
-        self.critic.save_checkpoint()
-        self.target_critic.save_checkpoint()
+        # self.critic.save_checkpoint()
+        # self.target_critic.save_checkpoint()
 
     def load_models(self):
         self.actor.load_checkpoint()
         self.target_actor.load_checkpoint()
-        self.critic.load_checkpoint()
-        self.target_critic.load_checkpoint()
+        # self.critic.load_checkpoint()
+        # self.target_critic.load_checkpoint()

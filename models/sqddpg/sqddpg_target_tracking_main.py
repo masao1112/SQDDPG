@@ -3,15 +3,15 @@ import numpy as np
 from sqddpg import SQDDPG
 from memory_buffer import MultiAgentReplayBuffer
 from utilities import *
-from mpe2 import simple_spread_v3  # or simple_adversary_v3, simple_spread_v3
-
+# from mpe2 import simple_spread_v3  # or simple_adversary_v3, simple_spread_v3
+from custom_environment.env.WSN import TargetTrackingEnv
 
 
 if __name__ == '__main__':
     
     PRINT_INTERVAL = 100
-    N_GAMES = 5000
-    MAX_STEPS = 40
+    N_GAMES = 10000
+    MAX_STEPS = 100
     total_steps = 0
     score_history = []
     avg_score_history = []
@@ -26,10 +26,9 @@ if __name__ == '__main__':
     #     continuous_actions=True ,  # use continuous control for MADDPG
     #     # render_mode="human"
     # )   
-    env = simple_spread_v3.parallel_env(
-        N=3, local_ratio=0.5, 
-        max_cycles=MAX_STEPS, continuous_actions=True,
-        dynamic_rescaling=True, #render_mode="human"
+    env = TargetTrackingEnv(
+        continuous_actions=True,
+        render_mode="human"
     )
     env.reset()
     n_agents = len(env.agents) 
@@ -63,7 +62,7 @@ if __name__ == '__main__':
     for episode in range(N_GAMES):
         obs_dict, _ = env.reset()
         obs = get_dict_value(obs_dict)
-        score = 0
+        score = 0       
         done = [False]*n_agents
         episode_step = 0
         while not any(done):
@@ -78,7 +77,7 @@ if __name__ == '__main__':
                 for idx, agent in enumerate(env.agents)
             }
             obs_, reward, done, info, _ = env.step(action_dict)
-            obs_ = get_dict_value(obs_)
+            obs_ = get_dict_value(obs_) 
             reward = get_dict_value(reward)
             done = get_dict_value(done)
             info = get_dict_value(info)
@@ -96,7 +95,8 @@ if __name__ == '__main__':
             score += sum(reward)
             total_steps += 1
             episode_step += 1
-
+            
+        print(score)
         score_history.append(score)
         avg_score = np.mean(score_history[-100:])
         avg_score_history.append(avg_score)
