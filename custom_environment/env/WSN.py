@@ -1,7 +1,10 @@
 from pettingzoo import ParallelEnv
 from pettingzoo.utils import parallel_to_aec
 import numpy as np
+import torch
 import gymnasium as gym
+import torch.nn.functional as F
+from torch.distributions.categorical import Categorical
 from helper.utilities import evenly_distribute_sensors
 from gymnasium.spaces import Box, Discrete
 import matplotlib.pyplot as plt
@@ -14,7 +17,7 @@ class TargetTrackingEnv(ParallelEnv):
         "render_modes": ["human"]
     }
 
-    def __init__(self, n_sensors=5, m_targets=6, area_size=3.0, rho_max=2.0, alpha_max=np.pi/3,
+    def __init__(self, n_sensors=5, m_targets=6, area_size=3.0, rho_max=18.0/20.0, alpha_max=np.pi/3,
                  max_theta_delta=np.pi/36, max_steps=40, continuous_actions=False, render_mode=None):
         """
         Implements a multi-agent environment where fixed directional sensors track randomly moving targets.
@@ -63,7 +66,7 @@ class TargetTrackingEnv(ParallelEnv):
         # Action space
         if self.continuous_actions:
             self.action_spaces = {
-                agent: Box(low=-1.0, high=1.0, shape=(3,), dtype=np.float32)
+                agent: Box(low=0, high=1.0, shape=(3,), dtype=np.float32)
                 for agent in self.possible_agents
             }
         else:
@@ -106,15 +109,19 @@ class TargetTrackingEnv(ParallelEnv):
         # Actions: dict {agent: array or int}
         for idx, agent in enumerate(self.agents):
             if self.continuous_actions:
-                delta = actions[agent][0] * self.max_theta_delta
+                tensor_act_i = torch.tensor(actions[agent], dtype=torch.float32)
+                act_i_cat = Categorical(F.softmax(tensor_act_i))
+                act_i = act_i_cat.sample()
+                # delta = actions[agent][0] * self.max_theta_delta # for act=(1,)
             else:
-                act = actions[agent]
-                if act == 0:  # left
-                    delta = -self.max_theta_delta
-                elif act == 2:  # right
-                    delta = self.max_theta_delta
-                else:  # stay (1)
-                    delta = 0.0
+                act_i = actions[agent]
+
+            if act_i == 0:  # left
+                delta = -self.max_theta_delta
+            elif act_i == 2:  # right
+                delta = self.max_theta_delta
+            else:  # stay (1)
+                delta = 0.0
             self.sensor_dir[idx] += delta
             self.sensor_dir[idx] %= (2 * np.pi)
 
