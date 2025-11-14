@@ -2,6 +2,7 @@ from pettingzoo import ParallelEnv
 from pettingzoo.utils import parallel_to_aec
 import numpy as np
 import gymnasium as gym
+from helper.utilities import evenly_distribute_sensors
 from gymnasium.spaces import Box, Discrete
 import matplotlib.pyplot as plt
 from matplotlib.patches import Wedge
@@ -13,8 +14,8 @@ class TargetTrackingEnv(ParallelEnv):
         "render_modes": ["human"]
     }
 
-    def __init__(self, n_sensors=5, m_targets=6, area_size=10.0, rho_max=2.0, alpha_max=np.pi/3,
-                 max_theta_delta=np.pi/18, max_steps=40, continuous_actions=False, render_mode=None):
+    def __init__(self, n_sensors=5, m_targets=6, area_size=3.0, rho_max=2.0, alpha_max=np.pi/3,
+                 max_theta_delta=np.pi/36, max_steps=40, continuous_actions=False, render_mode=None):
         """
         Implements a multi-agent environment where fixed directional sensors track randomly moving targets.
 
@@ -62,7 +63,7 @@ class TargetTrackingEnv(ParallelEnv):
         # Action space
         if self.continuous_actions:
             self.action_spaces = {
-                agent: Box(low=-1.0, high=1.0, shape=(1,), dtype=np.float32)
+                agent: Box(low=-1.0, high=1.0, shape=(3,), dtype=np.float32)
                 for agent in self.possible_agents
             }
         else:
@@ -86,7 +87,7 @@ class TargetTrackingEnv(ParallelEnv):
             np.random.seed(seed)
 
         # Random sensor positions (fixed per episode)
-        self.sensor_pos = np.random.uniform(0, self.area_size, (self.n_sensors, 2))
+        self.sensor_pos = evenly_distribute_sensors(self.n_sensors, [self.area_size]*2)
 
         # Random initial directions [0, 2pi)
         self.sensor_dir = np.random.uniform(0, 2 * np.pi, self.n_sensors)

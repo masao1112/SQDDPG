@@ -10,7 +10,7 @@ from custom_environment.env.WSN import TargetTrackingEnv
 if __name__ == '__main__':
     
     PRINT_INTERVAL = 100
-    N_GAMES = 10000
+    N_GAMES = 1000
     MAX_STEPS = 100
     total_steps = 0
     score_history = []
@@ -42,7 +42,7 @@ if __name__ == '__main__':
     critic_dims = sum(actor_dims)
     n_actions = action_dims[0]  # assume all continuous actions same dim
 
-    print(f"\nEnvironment: simple_adversary_v3")
+    print(f"\nEnvironment: simple_target_tracking")
     print(f"Number of agents: {n_agents}")
     print(f"Actor dims: {actor_dims}")
     print(f"Critic dims: {critic_dims}, n_actions: {n_actions}\n")
@@ -51,7 +51,7 @@ if __name__ == '__main__':
                            batch_size=batch_size, sample_size=sample_size,
                            fc1=128, fc2=128,  
                            alpha=1e-4, beta=1e-3, gamma=0.99, tau=0.001,
-                           chkpt_dir='tmp/sqddpg/',
+                           chkpt_dir='tmp/sqddpg/target_tracking',
                            evaluate=evaluate)
 
     memory = MultiAgentReplayBuffer(1000000, critic_dims, actor_dims, n_actions, n_agents, batch_size)

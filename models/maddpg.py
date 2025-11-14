@@ -1,6 +1,6 @@
 import torch
 import torch.nn.functional as F
-from agent import MADDPGAgent
+from helper.agent import MADDPGAgent
 
 class MADDPG:
     def __init__(self, critic_dims, actor_dims, n_agents, n_actions, chkpt_dir,
