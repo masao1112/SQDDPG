@@ -1,14 +1,23 @@
+"""
+Environment description:
+Context: Initiate n_sensors at evenly distributed position in a 2D grid, given
+a sensing range, the sensors have to decide which action to take to capture
+the target in order to maximize the cummulative rewards over time.
+- Actions: Box(0, 1, (3,)) for continuous actions, namely {Turn Left, Turn Right, Stay}
+- States: Box(-inf, inf, (n_targets*2,)) --flattened bc networks require it to be
+- Reward: Number of unique tracked target per step
+- Terminate condition: When max_steps reached
+"""
+
 from pettingzoo import ParallelEnv
-from pettingzoo.utils import parallel_to_aec
 import numpy as np
 import torch
-import gymnasium as gym
 import torch.nn.functional as F
 from torch.distributions.categorical import Categorical
 from helper.utilities import evenly_distribute_sensors
 from gymnasium.spaces import Box, Discrete
 import matplotlib.pyplot as plt
-from matplotlib.patches import Wedge
+from matplotlib.patches import Wedge, Circle
 
 
 class TargetTrackingEnv(ParallelEnv):
@@ -17,46 +26,25 @@ class TargetTrackingEnv(ParallelEnv):
         "render_modes": ["human"]
     }
 
-    def __init__(self, n_sensors=5, m_targets=6, area_size=3.0, rho_max=18.0/20.0, alpha_max=np.pi/3,
+    def __init__(self, n_sensors=5, m_targets=6, area_size=3.0, sr_max=18.0/20.0, alpha_max=np.pi/3,
                  max_theta_delta=np.pi/36, max_steps=40, continuous_actions=False, render_mode=None):
         """
         Implements a multi-agent environment where fixed directional sensors track randomly moving targets.
-
-        - Sensors: Fixed positions, controllable directions (rotate by delta_theta).
-        - Targets: Move randomly each step.
-        - Objective: Maximize unique tracked targets (within range rho_max and FoV alpha_max).
-        - Reward: Shared, number of unique tracked targets per step.
-        - Observations: Per sensor, (m_targets, 2) of (dist, rel_angle).
-        - Actions:
-          - If continuous_actions=True: Box(-1,1,(1,)) – normalized delta_theta, scaled to [-max_theta_delta, max_theta_delta].
-          - If False: Discrete(3): 0=left (-max_theta_delta), 1=stay, 2=right (+max_theta_delta).
-        - Episode: Fixed length max_steps (truncation).
-        - Area: Square [0, area_size] x [0, area_size], clip boundaries.
-
-        Logic Modifications for Continuous Actions:
-        - Added 'continuous_actions' flag to match MPE-style (e.g., simple_spread_v3).
-        - For continuous: Action is a scalar [-1,1], mapped to rotation delta [-max_theta_delta, +max_theta_delta].
-          - Allows finer control (fractional turns) vs. discrete's fixed steps.
-          - max_theta_delta defaults to pi/18 (~10 degrees) for max turn per step.
-        - In step: For continuous, delta = action[0] * max_theta_delta; for discrete, fixed steps.
-        - Directions always wrapped to [0, 2pi).
-        - No other changes: Observations, rewards, rendering remain the same.
-        - Rationale: Continuous enables gradient-based policies (e.g., DDPG); discrete for simpler baselines.
         """
-        self.n_sensors = n_sensors
-        self.m_targets = m_targets
-        self.area_size = area_size
-        self.rho_max = rho_max
-        self.alpha_max = alpha_max
-        self.max_theta_delta = max_theta_delta
-        self.max_steps = max_steps
+        self.n_sensors = n_sensors                      # number of sensors
+        self.m_targets = m_targets                      # number of targets to keep track of
+        self.area_size = area_size                      # grid size
+        self.sr_max = sr_max                            # max sensing range
+        self.alpha_max = alpha_max                      # max degree of sensing
+        self.max_theta_delta = max_theta_delta          # sensor stepping angle
+        self.max_steps = max_steps                      # max steps to terminate episode
         self.continuous_actions = continuous_actions
         self.render_mode = render_mode
-
+        self.best_case = n_sensors * m_targets * max_steps # best score per episode i.e covers all targets per time step
         self.possible_agents = [f"sensor_{i}" for i in range(n_sensors)]
         self.agents = self.possible_agents.copy()
 
-        # Observation: (m_targets, 2) for (dist, rel_angle); unbounded but practical [-pi,pi] for angle
+        # Observation: (m_targets, 2) for coordinate x and y -> (m_targets * 2)
         obs_shape = m_targets * 2
         self.observation_spaces = {
             agent: Box(low=-np.inf, high=np.inf, shape=(obs_shape,), dtype=np.float32)
@@ -89,7 +77,7 @@ class TargetTrackingEnv(ParallelEnv):
         if seed is not None:
             np.random.seed(seed)
 
-        # Random sensor positions (fixed per episode)
+        # Fixed sensor positions (fixed per episode)
         self.sensor_pos = evenly_distribute_sensors(self.n_sensors, [self.area_size]*2)
 
         # Random initial directions [0, 2pi)
@@ -110,8 +98,8 @@ class TargetTrackingEnv(ParallelEnv):
         for idx, agent in enumerate(self.agents):
             if self.continuous_actions:
                 tensor_act_i = torch.tensor(actions[agent], dtype=torch.float32)
-                act_i_cat = Categorical(F.softmax(tensor_act_i))
-                act_i = act_i_cat.sample()
+                # act_cat_i = Categorical(F.softmax(tensor_act_i))
+                act_i = torch.argmax(F.softmax(tensor_act_i))
                 # delta = actions[agent][0] * self.max_theta_delta # for act=(1,)
             else:
                 act_i = actions[agent]
@@ -133,7 +121,7 @@ class TargetTrackingEnv(ParallelEnv):
         # Compute tracking
         tracked = self._get_tracked()
 
-        # Reward: number of unique tracked targets
+        # Reward: number of unique tracked targets per step
         unique_tracked = len(np.unique(np.where(tracked)[1]))  # column indices (targets)
         reward = unique_tracked
         rewards = {agent: reward for agent in self.agents}
@@ -175,7 +163,7 @@ class TargetTrackingEnv(ParallelEnv):
                 t_pos = self.target_pos[j]
                 dx, dy = t_pos - s_pos
                 rho = np.sqrt(dx**2 + dy**2)
-                if rho > self.rho_max:
+                if rho > self.sr_max:
                     continue
                 alpha = np.arctan2(dy, dx) - s_dir
                 alpha = (alpha + np.pi) % (2 * np.pi) - np.pi
@@ -206,13 +194,16 @@ class TargetTrackingEnv(ParallelEnv):
             self.ax.scatter(s_x, s_y, c='blue', label='Sensors' if i == 0 else None)
 
             # FoV wedge
-            wedge = Wedge((s_x, s_y), self.rho_max, s_dir_deg - alpha_deg/2, s_dir_deg + alpha_deg/2,
-                          width=self.rho_max, fill=True, alpha=0.3, color='blue')
+            wedge = Wedge((s_x, s_y), self.sr_max, s_dir_deg - alpha_deg/2, s_dir_deg + alpha_deg/2,
+                          width=self.sr_max, fill=True, alpha=0.3, color='blue')
+            circle = Circle((s_x, s_y), self.sr_max, edgecolor='lightblue', facecolor='none',
+                            linestyle='--', linewidth=1)
             self.ax.add_patch(wedge)
+            self.ax.add_patch(circle)
 
             # Direction line
-            dx = self.rho_max * np.cos(self.sensor_dir[i])
-            dy = self.rho_max * np.sin(self.sensor_dir[i])
+            dx = self.sr_max * np.cos(self.sensor_dir[i])
+            dy = self.sr_max * np.sin(self.sensor_dir[i])
             self.ax.plot([s_x, s_x + dx], [s_y, s_y + dy], 'b--')
 
         self.ax.legend()

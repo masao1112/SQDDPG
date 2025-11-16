@@ -42,26 +42,40 @@ def evenly_distribute_sensors(n_sensors, area):
     - For hexagonal or other patterns, extend as needed.
     """
     width, height = area
-    # Compute grid dimensions to approximate square (balanced distribution)
-    cols = math.ceil(math.sqrt(n_sensors))
-    rows = math.ceil(n_sensors / cols)
+
+    # Find minimal k such that number of checkerboard positions >= n_sensors
+    k = 1
+    while True:
+        if k % 2 == 0:
+            num_checker = k ** 2 // 2
+        else:
+            num_checker = (k ** 2 + 1) // 2
+        if num_checker >= n_sensors:
+            break
+        k += 1
 
     # Spacing with margins (positions centered in cells)
-    x_step = width / (cols + 1)
-    y_step = height / (rows + 1)
+    x_step = width / (k + 1)
+    y_step = height / (k + 1)
 
     # Optional: Check if spacing exceeds coverage (assuming circular for simplicity)
     # if x_step > 2 * rho_max or y_step > 2 * rho_max:
-    #     # Could adjust rows/cols to densify, but would change effective n_sensors usage
+    #     # Could adjust k to densify, but would change the pattern
     #     pass
 
-    positions = []
-    for row in range(rows):
-        for col in range(cols):
-            if len(positions) >= n_sensors:
-                break
-            x = (col + 1) * x_step
-            y = (row + 1) * y_step
-            positions.append([x, y])
+    # Collect checkerboard positions (row + col even)
+    checker_positions = []
+    for row in range(k):
+        for col in range(k):
+            if (row + col) % 2 == 0:
+                x = (col + 1) * x_step
+                y = (row + 1) * y_step
+                checker_positions.append([x, y])
+
+    # Sort by row-major order (though already in order, but to confirm)
+    checker_positions.sort(key=lambda p: (p[1] / y_step - 1) * k + (p[0] / x_step - 1))
+
+    # Take first n_sensors
+    positions = checker_positions[:n_sensors]
 
     return np.array(positions)

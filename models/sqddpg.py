@@ -47,10 +47,9 @@ class SQDDPG:
     def choose_action(self, obs, noise_std):
         actions = []
         for i, agent in enumerate(self.agents):
-            action = agent.choose_action(obs, noise_std)
+            action = agent.choose_action(obs[i], noise_std)
             actions.append(action)
-	
-        return actions[0]
+        return actions
     # ------------------------------------------------------------------ #
     #  Learning
     # ------------------------------------------------------------------ #
@@ -60,7 +59,7 @@ class SQDDPG:
 
         # ----- sample -----
         obs, actions, rewards, next_obs, dones = memory.sample_buffer()
-        
+
         # ----- to torch (B, ...) -----
         obs = [torch.tensor(o, dtype=torch.float32, device=self.device) for o in obs] # (n_, B, obs_dim)
         next_obs = [torch.tensor(o, dtype=torch.float32, device=self.device) for o in next_obs]
@@ -76,10 +75,8 @@ class SQDDPG:
         # ----- target actions (mu') -----
         with torch.no_grad():
            next_actions = []
-           for i, agent in enumerate(self.agents):
-                next_obs_i = next_obs[i].unsqueeze(0) # adding an extra batch dim cause that is what pytorch expect
-                next_actions_i = agent.target_actor(next_obs_i).squeeze(0)
-                next_actions.append(next_actions_i)
+           next_actions = [ag.target_actor(o.unsqueeze(0)).squeeze(0)
+                           for ag, o in zip(self.agents, next_obs)]
 
            next_actions_cat = torch.cat(next_actions, dim=-1)
 
@@ -95,27 +92,24 @@ class SQDDPG:
         # ---------- GLOBAL CRITIC UPDATE (once per batch) ----------
         target = rewards.sum(dim=1) + self.gamma * (1 - dones) * next_shapley_sum.detach()
         critic_loss = F.mse_loss(shapley_sum, target)
-
         self.global_critic.optimizer.zero_grad()
         critic_loss.backward()
         torch.nn.utils.clip_grad_norm_(self.global_critic.parameters(), 0.5)
         self.global_critic.optimizer.step()
         self.global_critic.scheduler.step()
-
+        print(critic_loss)
         # ---------- PER-AGENT ACTOR UPDATE ----------
         for i, agent in enumerate(self.agents):
             # mu actions for this agent, detach others
-            mu_actions = []
-            for i, agent in enumerate(self.agents):
-                obs_i = obs[i].unsqueeze(0)                  # (1, B, obs_dim)
-                mu_actions_i = agent.actor(obs_i).squeeze(0) # (B,)
-                mu_actions.append(mu_actions_i)
+            mu_actions = [self.agents[j].actor(obs[j].unsqueeze(0)).squeeze(0)
+                          if j == i else self.agents[j].actor(obs[j].unsqueeze(0)).detach().squeeze(0)
+                          for j in range(self.n_)]
 
             mu_cat = torch.cat(mu_actions, dim=-1)
 
             shapley = self.marginal_contribution(
                 critic_inputs, mu_cat, is_target=False)          # (B, M, n_)
-            shapley = shapley.mean(dim=1)[:, i]                  # (B,)
+            shapley = shapley.mean(dim=1)[:, i]                  # (B,) get the shapley Q of agent ith
 
             actor_loss = -shapley.mean()
             agent.actor.optimizer.zero_grad()
@@ -137,7 +131,7 @@ class SQDDPG:
         """
         obs_batch      : (B, sum_obs)
         actions_batch  : (B, n_*act)
-        Returns        : (B, sample_size, n_agents)   marginals
+        Returns        : (B, sample_size, n_agents)   marginals per agent
         """
         B = obs_batch.shape[0]
         critic = self.global_target_critic if is_target else self.global_critic
@@ -150,29 +144,35 @@ class SQDDPG:
         obs_rep    = obs_batch.unsqueeze(1).repeat(1, self.sample_size, 1).view(B*self.sample_size, -1)
         actions_rep = actions_batch.unsqueeze(1).repeat(1, self.sample_size, 1).view(B*self.sample_size, -1)
 
-        marginals = torch.zeros(B*self.sample_size, self.n_, device=self.device)
+        # Start from empty coalition
+        cur_actions = torch.zeros_like(actions_rep)
+        Q_prev = critic(obs_rep, cur_actions).squeeze(-1)  # (B*M,)
 
-        # evaluate Q for empty coalition
-        empty_actions = torch.zeros_like(actions_rep)
-        Q_prev = critic(obs_rep, empty_actions).squeeze(-1)          # (B*M,)
+        # Marginals per position, then remap to agents
+        marginals_pos = torch.zeros(B * self.sample_size, self.n_, device=self.device)
 
         for k in range(self.n_):
-            # indices of agents that enter at step k in each permutation
-            enter = perms[:, :, k]                                   # (B, M)
-            # idx = (torch.arange(B*self.sample_size, device=self.device),
-            #        enter.flatten() + k * self.n_actions)             # flat linear indices
+            # Entering agents for this position (flat)
+            enter_flat = perms[:, :, k].flatten()  # (B*M,)
 
-            # copy actions of the entering agent into the previous coalition
-            cur_actions = actions_rep.clone()
-            cur_actions.view(-1, self.n_, self.n_actions)[torch.arange(B*self.sample_size), enter.flatten()] = \
-                actions_rep.view(-1, self.n_, self.n_actions)[torch.arange(B*self.sample_size), enter.flatten()]
+            # Copy entering agent's actions into current coalition
+            # View as (B*M, n_agents, n_actions)
+            cur_view = cur_actions.view(B * self.sample_size, self.n_, self.n_actions)
+            rep_view = actions_rep.view(B * self.sample_size, self.n_, self.n_actions)
+            cur_view[torch.arange(B * self.sample_size), enter_flat] = rep_view[torch.arange(B * self.sample_size), enter_flat]
 
             Q_cur = critic(obs_rep, cur_actions).squeeze(-1)
-            marginals[:, k] = Q_cur - Q_prev
+            marginals_pos[:, k] = Q_cur - Q_prev
             Q_prev = Q_cur
 
-        marginals = marginals.view(B, self.sample_size, self.n_)
-        return marginals
+        # Remap position marginals to actual agent IDs
+        shapley = torch.zeros(B * self.sample_size, self.n_, device=self.device)
+        for k in range(self.n_):
+            enter_flat = perms[:, :, k].flatten()  # (B*M,)
+            shapley[torch.arange(B * self.sample_size), enter_flat] = marginals_pos[:, k]
+
+        shapley = shapley.view(B, self.sample_size, self.n_)
+        return shapley
 
     # ------------------------------------------------------------------ #
     #  Checkpoint handling

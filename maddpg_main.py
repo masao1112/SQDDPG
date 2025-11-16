@@ -50,7 +50,6 @@ if __name__ == '__main__':
 
     memory = MultiAgentReplayBuffer(1000000, critic_dims, actor_dims, n_actions, n_agents, batch_size)
 
-
     if evaluate:
         maddpg_agents.load_checkpoint()
 
@@ -72,6 +71,7 @@ if __name__ == '__main__':
                 agent: np.array(actions[idx], dtype=np.float32)
                 for idx, agent in enumerate(env.agents)
             }
+
             obs_, reward, done, info, _ = env.step(action_dict)
             obs_ = get_dict_value(obs_)
             reward = get_dict_value(reward)

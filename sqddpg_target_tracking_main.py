@@ -3,34 +3,32 @@ import numpy as np
 from models.sqddpg import SQDDPG
 from helper.memory_buffer import MultiAgentReplayBuffer
 from helper.utilities import *
-# from mpe2 import simple_spread_v3  # or simple_adversary_v3, simple_spread_v3
 from custom_environment.env.WSN import TargetTrackingEnv
 
 
 if __name__ == '__main__':
     
     PRINT_INTERVAL = 100
-    N_GAMES = 1000
-    MAX_STEPS = 100
+    N_GAMES = 10000
+    MAX_STEPS = 50
     total_steps = 0
     score_history = []
     avg_score_history = []
+    cov_rate_history = []
+    avg_cov_rate_history = []
     evaluate = False
     best_score = -100
     batch_size = 128
     sample_size = 6
-    
-    # env = simple_adversary_v3.parallel_env(
-    #     N=3,                 # total number of agents (1 adversary + 2 good)
-    #     max_cycles=MAX_STEPS,
-    #     continuous_actions=True ,  # use continuous control for MADDPG
-    #     # render_mode="human"
-    # )   
+
     env = TargetTrackingEnv(
+        n_sensors=5, m_targets=6, area_size=3.0, sr_max=18.0 / 20.0,
         continuous_actions=True,
-        render_mode="human"
+        # render_mode="human",
+        max_steps=MAX_STEPS
     )
     env.reset()
+    best_case = env.best_case
     n_agents = len(env.agents) 
     actor_dims = []
     action_dims = []
@@ -50,11 +48,11 @@ if __name__ == '__main__':
     sqddpg_agents = SQDDPG(critic_dims, actor_dims, n_agents, n_actions, 
                            batch_size=batch_size, sample_size=sample_size,
                            fc1=128, fc2=128,  
-                           alpha=1e-4, beta=1e-3, gamma=0.99, tau=0.001,
-                           chkpt_dir='tmp/sqddpg/target_tracking',
+                           alpha=1e-2, beta=1e-1, gamma=0.99, tau=0.001,
+                           chkpt_dir='tmp/sqddpg/target_tracking/scene2',
                            evaluate=evaluate)
 
-    memory = MultiAgentReplayBuffer(1000000, critic_dims, actor_dims, n_actions, n_agents, batch_size)
+    memory = MultiAgentReplayBuffer(10000, critic_dims, actor_dims, n_actions, n_agents, batch_size)
 
     if evaluate:
         sqddpg_agents.load_checkpoint()
@@ -95,18 +93,25 @@ if __name__ == '__main__':
             score += sum(reward)
             total_steps += 1
             episode_step += 1
-            
-        print(score)
-        score_history.append(score)
+
+        # stats tracking
+        cov_rate = score/best_case
+        # cov_rate_percentage = round(cov_rate * 10000)/100
+        avg_cov_rate = np.mean(cov_rate_history[:-100])
         avg_score = np.mean(score_history[-100:])
+
+        score_history.append(score)
         avg_score_history.append(avg_score)
-        
+        cov_rate_history.append(cov_rate*100)
+        avg_cov_rate_history.append(avg_cov_rate)
         if not evaluate:
             if avg_score > best_score:
                 sqddpg_agents.save_checkpoint()
                 best_score = avg_score
         if episode % PRINT_INTERVAL == 0 and episode > 0:
-            print('episode', episode, 'average score {:.1f}'.format(avg_score))
+            print('episode', episode, 'average score {:.1f}'.format(avg_score), "avg_cover_rate {:.2f}".format(avg_cov_rate))
 
-    plot_rewards(avg_score_history, "mean_sqddpg_rewards.png")
-    plot_rewards(score_history, "original_sqddpg_rewards.png")
+    plot_rewards(avg_score_history, "mean_sqddpg_target_sensor_rewards.png")
+    plot_rewards(score_history, "original_sqddpg_target_sensor_rewards.png")
+    plot_rewards(avg_cov_rate_history, "mean_sqddpg_target_sensor_cov_rate.png")
+    plot_rewards(cov_rate_history, "original_sqddpg_target_sensor_cov_rate.png")
