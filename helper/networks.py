@@ -45,7 +45,7 @@ class CriticNetwork(nn.Module):
         # define an optimizer for this network
         self.optimizer = optim.Adam(self.parameters(), lr=beta)
         self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-                            self.optimizer, T_max=1500, eta_min=1e-6)
+                            self.optimizer, T_max=2000, eta_min=1e-6)
         # move tensors to device
         self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu') 
         self.to(self.device)
@@ -84,7 +84,7 @@ class ActorNetwork(nn.Module):
         # define an optimizer for this network
         self.optimizer = optim.Adam(self.parameters(), lr=alpha)
         self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-                            self.optimizer, T_max=1500, eta_min=1e-7)
+                            self.optimizer, T_max=2000, eta_min=1e-7)
         # move tensors to device
         self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu') 
         self.to(self.device)

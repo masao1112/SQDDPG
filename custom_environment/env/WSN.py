@@ -27,7 +27,7 @@ class TargetTrackingEnv(ParallelEnv):
     }
 
     def __init__(self, n_sensors=5, m_targets=6, area_size=3.0, sr_max=18.0/20.0, alpha_max=np.pi/3,
-                 max_theta_delta=np.pi/36, max_steps=40, continuous_actions=False, render_mode=None):
+                 max_theta_delta=np.pi/18, max_steps=40, continuous_actions=False, render_mode=None):
         """
         Implements a multi-agent environment where fixed directional sensors track randomly moving targets.
         """
@@ -40,7 +40,7 @@ class TargetTrackingEnv(ParallelEnv):
         self.max_steps = max_steps                      # max steps to terminate episode
         self.continuous_actions = continuous_actions
         self.render_mode = render_mode
-        self.best_case = n_sensors * m_targets * max_steps # best score per episode i.e covers all targets per time step
+        self.best_case = m_targets * max_steps # best score per episode i.e covers all targets per time step
         self.possible_agents = [f"sensor_{i}" for i in range(n_sensors)]
         self.agents = self.possible_agents.copy()
 
@@ -54,7 +54,7 @@ class TargetTrackingEnv(ParallelEnv):
         # Action space
         if self.continuous_actions:
             self.action_spaces = {
-                agent: Box(low=0, high=1.0, shape=(3,), dtype=np.float32)
+                agent: Box(low=-1.0, high=1.0, shape=(1,), dtype=np.float32)
                 for agent in self.possible_agents
             }
         else:
@@ -97,24 +97,20 @@ class TargetTrackingEnv(ParallelEnv):
         # Actions: dict {agent: array or int}
         for idx, agent in enumerate(self.agents):
             if self.continuous_actions:
-                tensor_act_i = torch.tensor(actions[agent], dtype=torch.float32)
-                # act_cat_i = Categorical(F.softmax(tensor_act_i))
-                act_i = torch.argmax(F.softmax(tensor_act_i))
-                # delta = actions[agent][0] * self.max_theta_delta # for act=(1,)
+                delta = actions[agent][0] * self.max_theta_delta # for act=(1,)
             else:
                 act_i = actions[agent]
-
-            if act_i == 0:  # left
-                delta = -self.max_theta_delta
-            elif act_i == 2:  # right
-                delta = self.max_theta_delta
-            else:  # stay (1)
-                delta = 0.0
+                if act_i == 0:  # left
+                    delta = -self.max_theta_delta
+                elif act_i == 2:  # right
+                    delta = self.max_theta_delta
+                else:  # stay (1)
+                    delta = 0.0
             self.sensor_dir[idx] += delta
             self.sensor_dir[idx] %= (2 * np.pi)
 
         # Move targets: random walk, sigma = 0.1 * area_size
-        move_sigma = 0.1 * self.area_size
+        move_sigma = 0.05 * self.area_size
         self.target_pos += np.random.normal(0, move_sigma, self.target_pos.shape)
         self.target_pos = np.clip(self.target_pos, 0, self.area_size)
 
@@ -122,10 +118,9 @@ class TargetTrackingEnv(ParallelEnv):
         tracked = self._get_tracked()
 
         # Reward: number of unique tracked targets per step
-        unique_tracked = len(np.unique(np.where(tracked)[1]))  # column indices (targets)
-        reward = unique_tracked
-        rewards = {agent: reward for agent in self.agents}
-
+        # unique_tracked = len(np.unique(np.where(tracked)[1]))  # column indices (targets)
+        # reward = unique_tracked
+        rewards = {agent: sum(tracked[i]).item() for i, agent in enumerate(self.agents)}
         self.current_step += 1
         truncated = self.current_step >= self.max_steps
         truncations = {agent: truncated for agent in self.agents}

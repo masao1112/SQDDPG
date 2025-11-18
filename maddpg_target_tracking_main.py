@@ -45,11 +45,11 @@ if __name__ == '__main__':
 
     maddpg_agents = MADDPG(critic_dims, actor_dims, n_agents, n_actions,
                            fc1=128, fc2=128,
-                           alpha=1e-3, beta=1e-2, gamma=0.99, tau=0.001,
+                           alpha=1e-3, beta=2e-3, gamma=0.99, tau=0.001,
                            chkpt_dir='tmp/maddpg/target_tracking/scene1',
                            evaluate=evaluate)
 
-    memory = MultiAgentReplayBuffer(10000, critic_dims, actor_dims, n_actions, n_agents, batch_size)
+    memory = MultiAgentReplayBuffer(100000, critic_dims, actor_dims, n_actions, n_agents, batch_size)
 
     if evaluate:
         maddpg_agents.load_checkpoint()

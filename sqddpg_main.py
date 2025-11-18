@@ -49,8 +49,8 @@ if __name__ == '__main__':
     sqddpg_agents = SQDDPG(critic_dims, actor_dims, n_agents, n_actions,
                            batch_size=batch_size, sample_size=sample_size,
                            fc1=128, fc2=128,
-                           alpha=1e-4, beta=1e-3, gamma=0.99, tau=0.001,
-                           chkpt_dir='tmp/sqddpg/',
+                           alpha=1e-3, beta=2e-3, gamma=0.99, tau=0.001,
+                           chkpt_dir='tmp/sqddpg/spread',
                            evaluate=evaluate)
 
     memory = MultiAgentReplayBuffer(1000000, critic_dims, actor_dims, n_actions, n_agents, batch_size)

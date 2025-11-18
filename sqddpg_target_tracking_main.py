@@ -48,11 +48,11 @@ if __name__ == '__main__':
     sqddpg_agents = SQDDPG(critic_dims, actor_dims, n_agents, n_actions, 
                            batch_size=batch_size, sample_size=sample_size,
                            fc1=128, fc2=128,  
-                           alpha=1e-2, beta=1e-1, gamma=0.99, tau=0.001,
-                           chkpt_dir='tmp/sqddpg/target_tracking/scene2',
+                           alpha=1e-2, beta=2e-2, gamma=0.99, tau=0.001,
+                           chkpt_dir='tmp/sqddpg/target_tracking/scene1',
                            evaluate=evaluate)
 
-    memory = MultiAgentReplayBuffer(10000, critic_dims, actor_dims, n_actions, n_agents, batch_size)
+    memory = MultiAgentReplayBuffer(100000, critic_dims, actor_dims, n_actions, n_agents, batch_size)
 
     if evaluate:
         sqddpg_agents.load_checkpoint()
@@ -79,7 +79,7 @@ if __name__ == '__main__':
             reward = get_dict_value(reward)
             done = get_dict_value(done)
             info = get_dict_value(info)
-            
+
             if episode_step >= MAX_STEPS:
                 done = [True]*n_agents
 
@@ -89,20 +89,19 @@ if __name__ == '__main__':
                 sqddpg_agents.learn(memory)
 
             obs = obs_
-
             score += sum(reward)
             total_steps += 1
             episode_step += 1
 
         # stats tracking
-        cov_rate = score/best_case
+        cov_rate = (score/best_case)*100
         # cov_rate_percentage = round(cov_rate * 10000)/100
         avg_cov_rate = np.mean(cov_rate_history[:-100])
         avg_score = np.mean(score_history[-100:])
 
         score_history.append(score)
         avg_score_history.append(avg_score)
-        cov_rate_history.append(cov_rate*100)
+        cov_rate_history.append(cov_rate)
         avg_cov_rate_history.append(avg_cov_rate)
         if not evaluate:
             if avg_score > best_score:
