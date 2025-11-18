@@ -33,7 +33,7 @@ class SQDDPG:
         self.agents = []
         for idx in range(n_agents):
             agent = SQDDPGAgent(
-                obs_dim=critic_dims,          # not used for critic any more
+                obs_dim=critic_dims,          # not used for critic anymore
                 act_dim=actor_dims[idx],
                 fc1_dim=fc1, fc2_dim=fc2,
                 agent_idx=idx, n_agents=n_agents,
@@ -74,7 +74,6 @@ class SQDDPG:
         old_actions_cat = torch.cat(actions, dim=-1)                   # (B, n_*act)
         # ----- target actions (mu') -----
         with torch.no_grad():
-           next_actions = []
            next_actions = [ag.target_actor(o.unsqueeze(0)).squeeze(0)
                            for ag, o in zip(self.agents, next_obs)]
 
@@ -97,7 +96,7 @@ class SQDDPG:
         torch.nn.utils.clip_grad_norm_(self.global_critic.parameters(), 0.5)
         self.global_critic.optimizer.step()
         self.global_critic.scheduler.step()
-        print(critic_loss)
+        # print(critic_loss)
         # ---------- PER-AGENT ACTOR UPDATE ----------
         for i, agent in enumerate(self.agents):
             # mu actions for this agent, detach others
@@ -120,7 +119,7 @@ class SQDDPG:
 
             # soft-update actor target
             agent.update_target_networks()
-
+            # print(actor_loss)
         # ----- soft-update global target critic (once per batch) -----
         _update_target_networks(self.global_target_critic, self.global_critic, self.tau)
 
