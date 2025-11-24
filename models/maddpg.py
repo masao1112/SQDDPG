@@ -110,4 +110,7 @@ class MADDPG:
             torch.nn.utils.clip_grad_norm_(agent.actor.parameters(), max_norm=0.5)
             agent.actor.optimizer.step()
             agent.actor.scheduler.step()
+
+            print(critic_loss)
+            print(actor_loss)
             agent.update_target_networks()

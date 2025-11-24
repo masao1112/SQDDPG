@@ -2,6 +2,15 @@ import matplotlib.pyplot as plt
 import numpy as np
 import math
 import os
+import cv2
+
+def videoObjects(output_filename):
+    output_filename = os.path.join('static/videos', output_filename)
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # Codec for MP4
+    fps = 5
+    width, height = 700, 700  # Example dimensions
+    out = cv2.VideoWriter(output_filename, fourcc, fps, (width, height))
+    return out
 
 def plot_rewards(rewards, out_path, window=100):
     # n_eps = len(rewards)

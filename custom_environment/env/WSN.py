@@ -54,7 +54,7 @@ class TargetTrackingEnv(ParallelEnv):
         # Action space
         if self.continuous_actions:
             self.action_spaces = {
-                agent: Box(low=-1.0, high=1.0, shape=(1,), dtype=np.float32)
+                agent: Box(low=0.0, high=1.0, shape=(3,), dtype=np.float32)
                 for agent in self.possible_agents
             }
         else:
@@ -97,7 +97,14 @@ class TargetTrackingEnv(ParallelEnv):
         # Actions: dict {agent: array or int}
         for idx, agent in enumerate(self.agents):
             if self.continuous_actions:
-                delta = actions[agent][0] * self.max_theta_delta # for act=(1,)
+                tensor_act_i = torch.tensor(actions[agent], dtype=torch.float32)
+                act_i = torch.argmax(F.softmax(tensor_act_i))
+                if act_i == 0:  # left
+                    delta = -self.max_theta_delta
+                elif act_i == 2:  # right
+                    delta = self.max_theta_delta
+                else:  # stay (1)
+                    delta = 0.0
             else:
                 act_i = actions[agent]
                 if act_i == 0:  # left

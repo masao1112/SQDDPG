@@ -1,34 +1,51 @@
 import time
+import cv2
 import numpy as np
 from models.sqddpg import SQDDPG
 from helper.memory_buffer import MultiAgentReplayBuffer
 from helper.utilities import *
-from mpe2 import simple_spread_v3  # or simple_adversary_v3, simple_spread_v3
+from mpe2 import simple_tag_v3  # or simple_adversary_v3, simple_spread_v3
+from gymnasium.wrappers import RecordVideo
 
 if __name__ == '__main__':
 
     PRINT_INTERVAL = 100
-    N_GAMES = 10000
-    MAX_STEPS = 40
+    N_GAMES = 20000
+    MAX_STEPS = 25
     total_steps = 0
     score_history = []
     avg_score_history = []
     evaluate = False
     best_score = -100
     batch_size = 128
-    sample_size = 6
+    sample_size = 20
+    # video config
+    # output_filename = 'static/videos/sqddpg_simple_tag.mp4'
+    # fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # Codec for MP4
+    # fps = 5
+    # width, height = 700, 700  # Example dimensions
+    # out = cv2.VideoWriter(output_filename, fourcc, fps, (width, height))
 
     # env = simple_adversary_v3.parallel_env(
     #     N=3,                 # total number of agents (1 adversary + 2 good)
     #     max_cycles=MAX_STEPS,
     #     continuous_actions=True ,  # use continuous control for MADDPG
-    #     # render_mode="human"
+    #     render_mode="human",
+    #     dynamic_rescaling=True
     # )
-    env = simple_spread_v3.parallel_env(
-        N=3, local_ratio=0.5,
-        max_cycles=MAX_STEPS, continuous_actions=True,
-        dynamic_rescaling=True,  # render_mode="human"
+    # env = simple_spread_v3.parallel_env(
+    #     N=3, local_ratio=0.5,
+    #     max_cycles=MAX_STEPS, continuous_actions=True,
+    #     dynamic_rescaling=True,  # render_mode="human"
+    # )
+    env = simple_tag_v3.parallel_env(
+        num_good=2, num_adversaries=4,
+        num_obstacles=2, max_cycles=MAX_STEPS,
+        continuous_actions=True,
+        dynamic_rescaling=True,
+        # render_mode="rgb_array"
     )
+
     env.reset()
     n_agents = len(env.agents)
     actor_dims = []
@@ -49,8 +66,8 @@ if __name__ == '__main__':
     sqddpg_agents = SQDDPG(critic_dims, actor_dims, n_agents, n_actions,
                            batch_size=batch_size, sample_size=sample_size,
                            fc1=128, fc2=128,
-                           alpha=1e-3, beta=2e-3, gamma=0.99, tau=0.001,
-                           chkpt_dir='tmp/sqddpg/spread',
+                           alpha=1e-4, beta=2e-4, gamma=0.99, tau=0.001,
+                           chkpt_dir='tmp/sqddpg/tag2',
                            evaluate=evaluate)
 
     memory = MultiAgentReplayBuffer(1000000, critic_dims, actor_dims, n_actions, n_agents, batch_size)
@@ -66,8 +83,9 @@ if __name__ == '__main__':
         episode_step = 0
         while not any(done):
             if evaluate:
-                env.render()
-                time.sleep(0.1)  # to slow down the action for the video
+                env_frame = env.render()
+                out.write(env_frame) # write frame to video
+                # time.sleep(0.1)  # to slow down the action for the video
             noise_std = 0.2 * (1 - episode / N_GAMES)
             actions = sqddpg_agents.choose_action(obs, noise_std)
             # perform rescaling as package required
@@ -99,7 +117,7 @@ if __name__ == '__main__':
         score_history.append(score)
         avg_score = np.mean(score_history[-100:])
         avg_score_history.append(avg_score)
-
+        print(score)
         if not evaluate:
             if avg_score > best_score:
                 sqddpg_agents.save_checkpoint()
@@ -107,5 +125,8 @@ if __name__ == '__main__':
         if episode % PRINT_INTERVAL == 0 and episode > 0:
             print('episode', episode, 'average score {:.1f}'.format(avg_score))
 
+    # env.close()
+    out.release()
+    print(f"Video saved to {output_filename}")
     plot_rewards(avg_score_history, "mean_sqddpg_rewards.png")
     plot_rewards(score_history, "original_sqddpg_rewards.png")

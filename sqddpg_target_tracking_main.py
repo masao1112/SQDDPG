@@ -107,6 +107,7 @@ if __name__ == '__main__':
             if avg_score > best_score:
                 sqddpg_agents.save_checkpoint()
                 best_score = avg_score
+
         if episode % PRINT_INTERVAL == 0 and episode > 0:
             print('episode', episode, 'average score {:.1f}'.format(avg_score), "avg_cover_rate {:.2f}".format(avg_cov_rate))
 

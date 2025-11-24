@@ -3,7 +3,7 @@ import numpy as np
 from models.maddpg import MADDPG
 from helper.memory_buffer import MultiAgentReplayBuffer
 from helper.utilities import *
-from mpe2 import simple_spread_v3  # or simple_adversary_v3, simple_spread_v3
+from mpe2 import simple_tag_v3  # or simple_adversary_v3, simple_spread_v3
 
 
 if __name__ == '__main__':
@@ -18,10 +18,12 @@ if __name__ == '__main__':
     best_score = -100
     batch_size = 128
     # initiate environment
-    env = simple_spread_v3.parallel_env(
-        N=3, 
-        max_cycles=MAX_STEPS, continuous_actions=True,
-        dynamic_rescaling=True, #render_mode="human"
+    env = simple_tag_v3.parallel_env(
+        num_good=2, num_adversaries=4,
+        num_obstacles=2, max_cycles=MAX_STEPS,
+        continuous_actions=True,
+        dynamic_rescaling=True,
+        # render_mode="rgb_array"
     )
     env.reset()
 
@@ -44,7 +46,7 @@ if __name__ == '__main__':
     # action space is a list of arrays, assume each agent has same action space
     maddpg_agents = MADDPG(critic_dims, actor_dims, n_agents, n_actions, 
                            fc1=128, fc2=128,  
-                           alpha=1e-3, beta=2e-3, gamma=0.99, tau=0.001,
+                           alpha=1e-4, beta=2e-4, gamma=0.99, tau=0.001,
                            chkpt_dir='tmp/maddpg/spread',
                            evaluate=evaluate)
 

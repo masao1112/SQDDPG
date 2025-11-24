@@ -2,7 +2,7 @@
 import torch
 import torch.nn.functional as F
 from helper.utilities import _update_target_networks
-from helper.networks import CriticNetwork
+from helper.networks import CriticNetwork, ActorNetwork
 from helper.agent import SQDDPGAgent
 
 
@@ -92,7 +92,7 @@ class SQDDPG:
         target = rewards.sum(dim=1) + self.gamma * (1 - dones) * next_shapley_sum.detach()
         critic_loss = F.mse_loss(shapley_sum, target)
         self.global_critic.optimizer.zero_grad()
-        critic_loss.backward()
+        critic_loss.backward(retain_graph=True)
         torch.nn.utils.clip_grad_norm_(self.global_critic.parameters(), 0.5)
         self.global_critic.optimizer.step()
         self.global_critic.scheduler.step()
@@ -107,19 +107,19 @@ class SQDDPG:
             mu_cat = torch.cat(mu_actions, dim=-1)
 
             shapley = self.marginal_contribution(
-                critic_inputs, mu_cat, is_target=False)          # (B, M, n_)
-            shapley = shapley.mean(dim=1)[:, i]                  # (B,) get the shapley Q of agent ith
+                critic_inputs, mu_cat, is_target=False).mean(dim=1)      # (B, M, n_) -> (B, n_)
 
-            actor_loss = -shapley.mean()
+            actor_loss = -torch.mean(shapley[:, i])
+            # print(actor_loss)
             agent.actor.optimizer.zero_grad()
-            actor_loss.backward()
+            actor_loss.backward(retain_graph=True)
             torch.nn.utils.clip_grad_norm_(agent.actor.parameters(), 0.5)
             agent.actor.optimizer.step()
             agent.actor.scheduler.step()
 
             # soft-update actor target
             agent.update_target_networks()
-            # print(actor_loss)
+
         # ----- soft-update global target critic (once per batch) -----
         _update_target_networks(self.global_target_critic, self.global_critic, self.tau)
 
@@ -153,13 +153,12 @@ class SQDDPG:
         for k in range(self.n_):
             # Entering agents for this position (flat)
             enter_flat = perms[:, :, k].flatten()  # (B*M,)
-
             # Copy entering agent's actions into current coalition
             # View as (B*M, n_agents, n_actions)
-            cur_view = cur_actions.view(B * self.sample_size, self.n_, self.n_actions)
+            cur_actions = cur_actions.view(B * self.sample_size, self.n_, self.n_actions)
             rep_view = actions_rep.view(B * self.sample_size, self.n_, self.n_actions)
-            cur_view[torch.arange(B * self.sample_size), enter_flat] = rep_view[torch.arange(B * self.sample_size), enter_flat]
-
+            cur_actions[torch.arange(B * self.sample_size), enter_flat] = rep_view[torch.arange(B * self.sample_size), enter_flat]
+            cur_actions = cur_actions.view(B*self.sample_size, -1) # reshape so it fit what critic net expects
             Q_cur = critic(obs_rep, cur_actions).squeeze(-1)
             marginals_pos[:, k] = Q_cur - Q_prev
             Q_prev = Q_cur
