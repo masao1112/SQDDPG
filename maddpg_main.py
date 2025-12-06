@@ -9,7 +9,7 @@ from mpe2 import simple_tag_v3  # or simple_adversary_v3, simple_spread_v3
 if __name__ == '__main__':
     
     PRINT_INTERVAL = 100
-    N_GAMES = 10000
+    N_GAMES = 25000
     MAX_STEPS = 40
     total_steps = 0
     score_history = []
@@ -19,7 +19,7 @@ if __name__ == '__main__':
     batch_size = 128
     # initiate environment
     env = simple_tag_v3.parallel_env(
-        num_good=2, num_adversaries=4,
+        num_good=1, num_adversaries=3,
         num_obstacles=2, max_cycles=MAX_STEPS,
         continuous_actions=True,
         dynamic_rescaling=True,
@@ -46,8 +46,8 @@ if __name__ == '__main__':
     # action space is a list of arrays, assume each agent has same action space
     maddpg_agents = MADDPG(critic_dims, actor_dims, n_agents, n_actions, 
                            fc1=128, fc2=128,  
-                           alpha=1e-4, beta=2e-4, gamma=0.99, tau=0.001,
-                           chkpt_dir='tmp/maddpg/spread',
+                           alpha=5e-4, beta=5e-4, gamma=0.99, tau=0.001,
+                           chkpt_dir='tmp/maddpg/tag',
                            evaluate=evaluate)
 
     memory = MultiAgentReplayBuffer(1000000, critic_dims, actor_dims, n_actions, n_agents, batch_size)
@@ -55,7 +55,7 @@ if __name__ == '__main__':
     if evaluate:
         maddpg_agents.load_checkpoint()
 
-    for i in range(N_GAMES):
+    for episode in range(N_GAMES):
         obs_dict, _ = env.reset()
         obs = get_dict_value(obs_dict)
         score = 0
@@ -67,7 +67,9 @@ if __name__ == '__main__':
             if evaluate:
                 env.render()
                 time.sleep(0.1) # to slow down the action for the video
-            actions = maddpg_agents.choose_action(obs)
+
+            noise_std = 0.2 * (1 - episode / N_GAMES)
+            actions = maddpg_agents.choose_action(obs, noise_std)
             # convert to dict bc env requires it
             action_dict = {
                 agent: np.array(actions[idx], dtype=np.float32)
@@ -102,8 +104,11 @@ if __name__ == '__main__':
             if avg_score > best_score:
                 maddpg_agents.save_checkpoint()
                 best_score = avg_score
-        if i % PRINT_INTERVAL == 0 and i > 0:
-            print('episode', i, 'average score {:.1f}'.format(avg_score))
-        
-    plot_rewards(avg_score_history, "mean_maddpg_rewards_eval.png")
-    plot_rewards(score_history, "original_maddpg_rewards_eval.png")
+        if i % PRINT_INTERVAL == 0 and episode > 0:
+            print('episode', episode, 'average score {:.1f}'.format(avg_score))
+
+    env.close()
+    # save output
+    np.savetxt('maddpg_simple_tag_rewards.txt', score_history)
+    plot_rewards(avg_score_history, "mean_maddpg_rewards.png")
+    plot_rewards(score_history, "original_maddpg_rewards.png")

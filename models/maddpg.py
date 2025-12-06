@@ -17,10 +17,10 @@ class MADDPG:
                   n_agents, n_actions, chkpt_dir=chkpt_dir, alpha=alpha, beta=beta, gamma=gamma, tau=tau, evaluate=evaluate)
             self.agents.append(agent)
             
-    def choose_action(self, obs):
+    def choose_action(self, obs, noise_std):
         actions = []
         for i, agent in enumerate(self.agents):
-            action = agent.choose_action(obs[i], 0.1)
+            action = agent.choose_action(obs[i], noise_std)
             actions.append(action)
         return actions
     
@@ -52,6 +52,7 @@ class MADDPG:
         old_agents_actions = [] 
         next_critic_inputs = []
         critic_inputs = []
+        entropy = []
         for agent_idx, agent in enumerate(self.agents):
             # get the desired observation for corresponding agent
             obs_i = torch.tensor(obs[agent_idx], dtype=torch.float32).to(self.device)  # (B, actor_dim_i)
@@ -111,6 +112,4 @@ class MADDPG:
             agent.actor.optimizer.step()
             agent.actor.scheduler.step()
 
-            print(critic_loss)
-            print(actor_loss)
             agent.update_target_networks()

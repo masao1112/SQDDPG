@@ -150,6 +150,7 @@ class SQDDPG:
         # Marginals per position, then remap to agents
         marginals_pos = torch.zeros(B * self.sample_size, self.n_, device=self.device)
 
+        # In turns, add agent to the coalition
         for k in range(self.n_):
             # Entering agents for this position (flat)
             enter_flat = perms[:, :, k].flatten()  # (B*M,)

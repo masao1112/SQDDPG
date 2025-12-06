@@ -77,8 +77,9 @@ class ActorNetwork(nn.Module):
             nn.Linear(fc1_dims, fc2_dims),
             nn.ReLU(),
             nn.Linear(fc2_dims, n_actions),
-            nn.Sigmoid() # for continuous actions
+            nn.Softmax(dim=-1) # Sigmoid: simple_tag, Softmax: Pose_env
         )
+
         self.chkpt_dir = chkpt_dir
         self.chkpt_file = os.path.join(chkpt_dir, name)
         # define an optimizer for this network

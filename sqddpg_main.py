@@ -10,8 +10,8 @@ from gymnasium.wrappers import RecordVideo
 if __name__ == '__main__':
 
     PRINT_INTERVAL = 100
-    N_GAMES = 20000
-    MAX_STEPS = 25
+    N_GAMES = 25000
+    MAX_STEPS = 40
     total_steps = 0
     score_history = []
     avg_score_history = []
@@ -20,7 +20,7 @@ if __name__ == '__main__':
     batch_size = 128
     sample_size = 20
     # video config
-    # output_filename = 'static/videos/sqddpg_simple_tag.mp4'
+    # output_filename = 'static/videos/sqddpg_simple_tag2.mp4'
     # fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # Codec for MP4
     # fps = 5
     # width, height = 700, 700  # Example dimensions
@@ -39,7 +39,7 @@ if __name__ == '__main__':
     #     dynamic_rescaling=True,  # render_mode="human"
     # )
     env = simple_tag_v3.parallel_env(
-        num_good=2, num_adversaries=4,
+        num_good=1, num_adversaries=3,
         num_obstacles=2, max_cycles=MAX_STEPS,
         continuous_actions=True,
         dynamic_rescaling=True,
@@ -66,8 +66,8 @@ if __name__ == '__main__':
     sqddpg_agents = SQDDPG(critic_dims, actor_dims, n_agents, n_actions,
                            batch_size=batch_size, sample_size=sample_size,
                            fc1=128, fc2=128,
-                           alpha=1e-4, beta=2e-4, gamma=0.99, tau=0.001,
-                           chkpt_dir='tmp/sqddpg/tag2',
+                           alpha=5e-4, beta=5e-4, gamma=0.99, tau=0.001,
+                           chkpt_dir='tmp/sqddpg/tag_',
                            evaluate=evaluate)
 
     memory = MultiAgentReplayBuffer(1000000, critic_dims, actor_dims, n_actions, n_agents, batch_size)
@@ -83,9 +83,10 @@ if __name__ == '__main__':
         episode_step = 0
         while not any(done):
             if evaluate:
-                env_frame = env.render()
-                out.write(env_frame) # write frame to video
-                # time.sleep(0.1)  # to slow down the action for the video
+                env.render()
+                # env_frame = env.render()
+                # out.write(env_frame) # write frame to video
+                time.sleep(0.1)  # to slow down the action for the video
             noise_std = 0.2 * (1 - episode / N_GAMES)
             actions = sqddpg_agents.choose_action(obs, noise_std)
             # perform rescaling as package required
@@ -125,8 +126,9 @@ if __name__ == '__main__':
         if episode % PRINT_INTERVAL == 0 and episode > 0:
             print('episode', episode, 'average score {:.1f}'.format(avg_score))
 
-    # env.close()
-    out.release()
-    print(f"Video saved to {output_filename}")
+    env.close()
+    # out.release()
+    # print(f"Video saved to {output_filename}")
+    np.savetxt('sqddpg_simple_tag_rewards.txt', score_history)
     plot_rewards(avg_score_history, "mean_sqddpg_rewards.png")
     plot_rewards(score_history, "original_sqddpg_rewards.png")
