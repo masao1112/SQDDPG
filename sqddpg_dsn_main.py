@@ -21,7 +21,7 @@ if __name__ == '__main__':
     sample_size = 6
 
     env = Pose_Env_Base(
-        render=False,
+        render=True,
         render_save=False,
         continuous_action=True
     )

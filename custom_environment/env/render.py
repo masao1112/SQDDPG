@@ -103,7 +103,7 @@ def render(camera_pos, target_pos, reward=None, save=False):
     plt.axis('off')
     # plt.show()
     if save:
-        file_path = '../demo/img'
+        file_path = '../static/img'
         file_name = '{}.jpg'.format(datetime.now())
         if not os.path.exists(file_path):
             os.makedirs(file_path)

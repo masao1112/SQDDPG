@@ -50,7 +50,6 @@ class CriticNetwork(nn.Module):
         self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu') 
         self.to(self.device)
 
-        
     def forward(self, obs, actions):
         sa_concat = torch.concat([obs, actions], dim=-1) # obs: (n_, n_state), actions: (n_, 1)
         critic_value = self.layers(sa_concat) # forward pass
@@ -65,7 +64,7 @@ class CriticNetwork(nn.Module):
         
     def load_checkpoint(self):
         """Load model from checkpoint path"""
-        self.load_state_dict(torch.load(self.chkpt_file, weights_only=True, map_location=torch.device('cpu')))        
+        self.load_state_dict(torch.load(self.chkpt_file, weights_only=True, map_location=torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')))
 
 class ActorNetwork(nn.Module):
     def __init__(self, alpha, input_dims, fc1_dims, fc2_dims,
@@ -102,4 +101,4 @@ class ActorNetwork(nn.Module):
         
     def load_checkpoint(self):
         """Load model from checkpoint path"""
-        self.load_state_dict(torch.load(self.chkpt_file, weights_only=True, map_location=torch.device('cpu')))
+        self.load_state_dict(torch.load(self.chkpt_file, weights_only=True, map_location=torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')))

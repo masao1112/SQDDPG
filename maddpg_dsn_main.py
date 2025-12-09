@@ -10,7 +10,7 @@ from custom_environment.env.pose_env_base import Pose_Env_Base  # Assuming PoseE
 if __name__ == '__main__':
 
     PRINT_INTERVAL = 100
-    N_GAMES = 20000
+    N_GAMES = 10
     MAX_STEPS = 100  # Matches PoseEnv default max_steps
     total_steps = 0
     score_history = []
@@ -21,7 +21,7 @@ if __name__ == '__main__':
     sample_size = 6
 
     env = Pose_Env_Base(
-        render=False,
+        render=True,
         render_save=False,
         continuous_action=True
     )
@@ -56,7 +56,7 @@ if __name__ == '__main__':
             if evaluate:
                 time.sleep(0.1)  # to slow down the action for the video
             noise_std = 0.2 * (1 - episode / N_GAMES)
-            actions = maddpg_agents.choose_action(obs)
+            actions = maddpg_agents.choose_action(obs, noise_std)
             # perform rescaling as package required
             obs_, rewards, coverage_rate, dones, _ = env.step(actions)
 
@@ -75,14 +75,13 @@ if __name__ == '__main__':
 
         # stats tracking
         avg_score = np.mean(score_history[-100:])
-
         score_history.append(score)
         avg_score_history.append(avg_score)
         if not evaluate:
             if avg_score > best_score:
                 maddpg_agents.save_checkpoint()
                 best_score = avg_score
-
+        print(score)
         if episode % PRINT_INTERVAL == 0 and episode > 0:
             print('episode', episode, 'average score {:.1f}'.format(avg_score))
 
