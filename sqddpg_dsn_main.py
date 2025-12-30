@@ -10,7 +10,7 @@ from custom_environment.env.pose_env_base import Pose_Env_Base  # Assuming PoseE
 if __name__ == '__main__':
 
     PRINT_INTERVAL = 100
-    N_GAMES = 20000
+    N_GAMES = 25000
     MAX_STEPS = 100  # Matches PoseEnv default max_steps
     total_steps = 0
     score_history = []
@@ -18,10 +18,10 @@ if __name__ == '__main__':
     evaluate = False
     best_score = -100
     batch_size = 64
-    sample_size = 6
+    sample_size = 20 # number of sample for shapley approximation
 
     env = Pose_Env_Base(
-        render=True,
+        render=False,
         render_save=False,
         continuous_action=True
     )
@@ -31,7 +31,7 @@ if __name__ == '__main__':
     critic_dims = state.shape[0] * state.shape[1] # total critic dims
     actor_dims = [state.shape[1]] * n_agents # each actor's dim
 
-    print(f"\nEnvironment: SQDDPG(pose_env)")
+    print(f"\nEnvironment: SQDDPG(dsn)")
     print(f"Number of agents: {n_agents}")
     print(f"Actor dims: {actor_dims}")
     print(f"Critic dims: {critic_dims}, n_actions: {n_actions}\n")
@@ -40,7 +40,7 @@ if __name__ == '__main__':
                            batch_size=batch_size, sample_size=sample_size,
                            fc1=128, fc2=128,
                            alpha=5e-4, beta=5e-4, gamma=0.9, tau=0.1,
-                           chkpt_dir='tmp/sqddpg/pose_env/scene1',
+                           chkpt_dir='tmp/sqddpg/dsn/scene1',
                            evaluate=evaluate)
 
     memory = MultiAgentReplayBuffer(100000, critic_dims, actor_dims, n_actions, n_agents, batch_size)
