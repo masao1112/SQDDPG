@@ -1,6 +1,6 @@
 # SQDDPG
-![DSNs Experiment Result](static/img/DSNs)
-![PreyAndPredator Experiment Result](static/img/simple_tag)
+![DSNs Experiment Result](static/img/DSNs.png)
+![PreyAndPredator Experiment Result](static/img/simple_tag.png)
 <br>
 Implementation of **Shapley Q-value Deep Deterministic Policy Gradient (SQDDPG)**, a multi-agent reinforcement learning algorithm that incorporates Shapley values for fair credit assignment in cooperative tasks with global rewards.
 
