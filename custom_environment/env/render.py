@@ -15,18 +15,28 @@ reward = [0.4]
 
 import math
 import os
+import json
 import numpy as np
 import matplotlib.pyplot as plt
 from datetime import datetime
 import matplotlib.patches as mpatches
 from matplotlib.patches import Circle
-visual_distance = 100
 
+SETTING_PATH = "custom_environment/env/PoseEnvLarge_multi.json"
+with open(SETTING_PATH, encoding='utf-8') as f:
+    setting = json.load(f)
+
+world2pixel = 800/140
+visual_distance = setting['visual_distance'] / world2pixel
+delta_theta = setting['theta']
+
+def round_up(n, decimals=2):
+    multiplier = 10 ** decimals
+    return math.ceil(n * multiplier) / multiplier
 
 def render(camera_pos, target_pos, reward=None, save=False):
     camera_pos = np.array(camera_pos)
     target_pos = np.array(target_pos)
-
     camera_pos[:, :2] /= 1000.0
     target_pos[:, :2] /= 1000.0
 
@@ -43,15 +53,14 @@ def render(camera_pos, target_pos, reward=None, save=False):
 
     camera_position = length * (1 - np.array(camera_position) / area_length) / 2
     target_position = length * (1 - np.array(target_position) / area_length) / 2
-    abs_angles = [camera_pos[i][2] * -1 for i in range(num_cam)]
-
+    abs_angles = [camera_pos[i][2] * -1 for i in range(num_cam)] # extract camera direction
     fig = plt.figure(0)
     plt.cla()
     plt.imshow(img.astype(np.uint8))
 
     # get camera's view space positions
-    visua_len = 100  # length of arrow
-    L = 140  # length of arrow
+    visua_len = visual_distance  # length of arrow
+    L = visual_distance  # length of arrow
     ax = plt.gca()
     for i in range(num_cam):
 
@@ -74,15 +83,14 @@ def render(camera_pos, target_pos, reward=None, save=False):
         #
 
     for i in range(num_cam):
-        theta = abs_angles[i]  # -90
+        theta = abs_angles[i]
         theta -= 90
-        the1 = theta - 45
-        the2 = theta + 45
+        the1 = theta - (90-delta_theta) # if theta=30 then render=60...
+        the2 = theta + (90-delta_theta)
 
         a = camera_position[i][0] + visua_len
         b = camera_position[i][1] + visua_len
         wedge = mpatches.Wedge((a, b), L, the1*-1, the2*-1+180, color='green', alpha=0.2)
-        # print(i, the1*-1, the2*-1)
         ax.add_artist(wedge)
 
         disk1 = plt.Circle((camera_position[i][0] + visua_len, camera_position[i][1] + visua_len), 4, color='slategray', fill=True)
@@ -90,6 +98,11 @@ def render(camera_pos, target_pos, reward=None, save=False):
         plt.annotate(str(i + 1), xy=(camera_position[i][0] + visua_len, camera_position[i][1] + visua_len),
                      xytext=(camera_position[i][0] + visua_len, camera_position[i][1] + visua_len), fontsize=10,
                      color='black')
+        # annotate cam's local reward
+        local_reward = round_up(reward[i])
+        plt.annotate(local_reward, xy=(camera_position[i][0] + visua_len, camera_position[i][1] + visua_len),
+                     xytext=(camera_position[i][0] + visua_len - 40, camera_position[i][1] + visua_len + 15), fontsize=20,
+                     color='red', alpha =0.3)
 
     plt.text(5, 5, '{} sensors & {} targets'.format(num_cam, num_target), color="black")
 
