@@ -40,7 +40,7 @@ if __name__ == '__main__':
                            batch_size=batch_size, sample_size=sample_size,
                            fc1=128, fc2=128,
                            alpha=5e-4, beta=5e-4, gamma=0.9, tau=0.1,
-                           chkpt_dir='tmp/sqddpg/dsn/scene1',
+                           chkpt_dir='tmp/sqddpg/dsn',
                            evaluate=evaluate)
 
     memory = MultiAgentReplayBuffer(100000, critic_dims, actor_dims, n_actions, n_agents, batch_size)

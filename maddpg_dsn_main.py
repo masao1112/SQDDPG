@@ -38,7 +38,7 @@ if __name__ == '__main__':
     maddpg_agents = MADDPG(critic_dims, actor_dims, n_agents, n_actions,
                            fc1=128, fc2=128,
                            alpha=5e-5, beta=5e-5, gamma=0.9, tau=0.1,
-                           chkpt_dir='tmp/maddpg/dsn_45',
+                           chkpt_dir='tmp/maddpg/dsn',
                            evaluate=evaluate)
 
     memory = MultiAgentReplayBuffer(10000, critic_dims, actor_dims, n_actions, n_agents, batch_size)
