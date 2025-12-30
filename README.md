@@ -1,11 +1,13 @@
 # SQDDPG
-![DSNs Experiment Result](static/img/DSNs.png)
-![PreyAndPredator Experiment Result](static/img/simple_tag.png)
-<br>
-Implementation of **Shapley Q-value Deep Deterministic Policy Gradient (SQDDPG)**, a multi-agent reinforcement learning algorithm that incorporates Shapley values for fair credit assignment in cooperative tasks with global rewards.
+<p align="center">
+<img src="static/img/DSNs.png" alt="DSNs Experiment Result" width="500"/>
+<img src="static/img/simple_tag.png" alt="PreyAndPredator Experiment Result" width="500"/>
+</p>
 
-This repository provides a comparison between SQDDPG and the baseline MADDPG algorithm on two multi-agent environments:
-- A custom **DSN** (Drone Swarm Navigation-like) environment
+The purpose of this project is to implement **Shapley Q-value Deep Deterministic Policy Gradient (SQDDPG)**, a multi-agent reinforcement learning algorithm that incorporates Shapley values for fair credit assignment in cooperative tasks with global rewards. And verify the result given in the [HiT-MAC paper](https://arxiv.org/abs/2010.13110).
+
+Experiments are conducted between SQDDPG and the baseline MADDPG algorithm on two multi-agent environments:
+- A custom **DSN** (Direct Sensor Networks) environment from the [HiT-MAC paper](https://arxiv.org/abs/2010.13110)
 - The `simple_tag` scenario from PettingZoo's Multi-Agent Particle Environments (MPE)
 
 ## File Structure
@@ -16,7 +18,7 @@ SQDDPG/
 │   └── env/                          # Subdirectory for environment modules
 │       └── (environment-related files/modules, updated for continuous actions support; specific files not listed but likely include env classes)
 ├── helper/                           # Utility and core supporting modules for agents, networks, and training
-│   ├── agent.py                      # Defines the SQDDPG agent class (handles action selection, updates, etc.)
+│   ├── agent.py                      # Defines the agent class (handles action selection, updates, etc.)
 │   ├── memory_buffer.py              # Implements the replay memory buffer for storing and sampling experiences
 │   ├── networks.py                   # Neural network definitions (actor, critic, scheduler, etc.)
 │   └── utilities.py                  # General utility functions
