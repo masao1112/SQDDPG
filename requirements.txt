@@ -1,7 +1,7 @@
-torch
-numpy
-matplotlib
-gymnasium
-gym
-pettingzoo
-mpe2
+torch==2.8.0
+numpy==2.0.2
+matplotlib==3.9.4
+gymnasium==1.1.1
+gym==0.26.2
+pettingzoo==1.25.0
+mpe2==0.0.1
