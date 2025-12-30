@@ -168,7 +168,7 @@ class Pose_Env_Base:
 
         actions = torch.tensor(actions, dtype=torch.float64).squeeze()
         if self.continuous_action:
-            actions = torch.argmax(actions, dim=1)
+            actions = torch.argmax(actions, dim=1) # force to discrete
 
         # actions for cameras
         actions2cam = []
