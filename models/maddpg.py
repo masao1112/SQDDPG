@@ -52,7 +52,6 @@ class MADDPG:
         old_agents_actions = [] 
         next_critic_inputs = []
         critic_inputs = []
-        entropy = []
         for agent_idx, agent in enumerate(self.agents):
             # get the desired observation for corresponding agent
             obs_i = torch.tensor(obs[agent_idx], dtype=torch.float32).to(self.device)  # (B, actor_dim_i)
@@ -70,7 +69,7 @@ class MADDPG:
             critic_inputs.append(obs_i)
             
         # Concatenate actions for critic (dim = B, n_*n_actions)
-        mu_cat = torch.cat(all_mu_actions, dim=-1).to(self.device)
+        # mu_cat = torch.cat(all_mu_actions, dim=-1).to(self.device)
         next_actions_cat = torch.cat(all_next_actions, dim=-1).to(self.device)
         old_actions_cat = torch.cat(old_agents_actions, dim=-1).to(self.device)  # (B, n_*n_actions)
         critic_input_cat = torch.cat(critic_inputs, dim=-1).to(self.device)  # (B, total_obs_dim)
@@ -94,7 +93,7 @@ class MADDPG:
             critic_loss.backward(retain_graph=True)
             torch.nn.utils.clip_grad_norm_(agent.critic.parameters(), max_norm=0.5)
             agent.critic.optimizer.step()
-            agent.critic.scheduler.step()
+            # agent.critic.scheduler.step()
             # Construct Actor Loss (detach other agents' actions already done; no grad to critic by using separate forward)
             mu_actor_loss = []
             for j in range(self.n_):
@@ -110,6 +109,6 @@ class MADDPG:
             actor_loss.backward(retain_graph=True)
             torch.nn.utils.clip_grad_norm_(agent.actor.parameters(), max_norm=0.5)
             agent.actor.optimizer.step()
-            agent.actor.scheduler.step()
+            # agent.actor.scheduler.step()
 
             agent.update_target_networks()
