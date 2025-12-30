@@ -1,10 +1,11 @@
 {
 	"env_name": "PoseEnv-v0",
-	"cam_id": [1, 2, 3, 4, 5],
+	"cam_id": [1, 2, 3, 4],
 	"pitch": 0,
 	"max_steps": 100,
-	"visual_distance": 40,
-	"target_num": 6,
+	"visual_distance": 800,
+	"target_num": 5,
+    "theta": 45.0,
 	"rotation_scale": 5,
 	"discrete_actions": [
 		[0],

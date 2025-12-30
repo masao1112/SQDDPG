@@ -39,6 +39,7 @@ class Pose_Env_Base:
             # Receiving a continuous range of numbers shaped (n_actions,)
             self.action_space = [spaces.Box(0, 1, (len(self.discrete_actions),)) for i in range(self.n)]
         self.rotation_scale = setting['rotation_scale']
+        self.theta = setting['theta']
 
         # define observation space
         self.state_dim = 4  # related with the preprocess
@@ -78,9 +79,10 @@ class Pose_Env_Base:
         return self.cam[cam_id]['rotation']
 
     def get_hori_direction(self, current_pose, target_pose):
+        """Return the angle distance between current and target pose"""
         y_delt = target_pose[1] - current_pose[1]
         x_delt = target_pose[0] - current_pose[0]
-        angle_now = np.arctan2(y_delt, x_delt) / np.pi * 180 - current_pose[2]
+        angle_now = np.arctan2(y_delt, x_delt) / np.pi * 180 - current_pose[2] # target direction - camera view direction
         if angle_now > 180:
             angle_now -= 360
         if angle_now < -180:
@@ -117,7 +119,6 @@ class Pose_Env_Base:
             cam_rot = self.get_rotation(cam)
             cam_rot[0] = np.random.rand()*360
             self.set_rotation(cam, cam_rot)
-
 
         self.count_steps = 0
 
@@ -259,7 +260,7 @@ class Pose_Env_Base:
         cov_rate = info['Global_reward']
         # show
         if self.render:
-            render(info['Cam_Pose'], np.array(self.target_pos_list), gr, save=self.render_save)
+            render(info['Cam_Pose'], np.array(self.target_pos_list), r, save=self.render_save)
 
         state, self.state_dim = self.preprocess_pose(info)
         return state, rewards, cov_rate, info['Done'], info
@@ -276,8 +277,9 @@ class Pose_Env_Base:
         return start_area
 
     def angle_reward(self, angle_h, d):
-        hori_reward = 1 - abs(angle_h) / 45.0
-        visible = hori_reward > 0 and d <= self.visual_distance
+        """Reward the sensor if a target is in the coverage range"""
+        hori_reward = 1 - abs(angle_h) / self.theta # reward by angle deviation, this also proof that angle is calculated on theta/2
+        visible = hori_reward > 0 and d <= self.visual_distance # if target is in the coverage circle
         if visible:
             reward = np.clip(hori_reward, -1, 1)
         else:
@@ -285,6 +287,7 @@ class Pose_Env_Base:
         return reward, visible
 
     def multi_reward(self, cam_info):
+        """Compute reward based on camera position and target position"""
         # generate reward
         camera_local_rewards = []
         coverage_rate = []
