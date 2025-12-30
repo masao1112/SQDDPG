@@ -10,18 +10,17 @@ from custom_environment.env.pose_env_base import Pose_Env_Base  # Assuming PoseE
 if __name__ == '__main__':
 
     PRINT_INTERVAL = 100
-    N_GAMES = 10
+    N_GAMES = 25000
     MAX_STEPS = 100  # Matches PoseEnv default max_steps
     total_steps = 0
     score_history = []
     avg_score_history = []
     evaluate = False
     best_score = -100
-    batch_size = 64
-    sample_size = 6
+    batch_size = 128
 
     env = Pose_Env_Base(
-        render=True,
+        render=False,
         render_save=False,
         continuous_action=True
     )
@@ -38,8 +37,8 @@ if __name__ == '__main__':
 
     maddpg_agents = MADDPG(critic_dims, actor_dims, n_agents, n_actions,
                            fc1=128, fc2=128,
-                           alpha=5e-4, beta=5e-4, gamma=0.9, tau=0.1,
-                           chkpt_dir='tmp/maddpg/dsn',
+                           alpha=5e-5, beta=5e-5, gamma=0.9, tau=0.1,
+                           chkpt_dir='tmp/maddpg/dsn_45',
                            evaluate=evaluate)
 
     memory = MultiAgentReplayBuffer(10000, critic_dims, actor_dims, n_actions, n_agents, batch_size)
@@ -86,6 +85,6 @@ if __name__ == '__main__':
             print('episode', episode, 'average score {:.1f}'.format(avg_score))
 
     # save output
-    np.savetxt("maddpg_dsn_rewards.txt", score_history)
+    np.savetxt("maddpg_dsn_rewards.txt2", score_history)
     plot_rewards(avg_score_history, "mean_maddpg_pose_rewards.png")
     plot_rewards(score_history, "original_maddpg_pose_rewards.png")
