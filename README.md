@@ -13,7 +13,12 @@ Experiments are conducted between SQDDPG and the baseline MADDPG algorithm on tw
 Here are the visualizations, training config are below:
 <p align="center">
 <img src="static/img/WSNs.jpg" alt="DSNs Experiment Result" width="500"/>
+<br/>
+<em>Figure 1. DSN experiment results of SQDDPG.</em>
+<br/><br/>
 <img src="static/img/simple_tag.jpg" alt="PreyAndPredator Experiment Result" width="500"/>
+<br/>
+<em>Figure 2. simple_tag (Prey and Predator) experiment results of MADDPG.</em>
 </p>
 
 ## File Structure
